@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package onion_routing;
+
+option go_package = "DS-Project-Onion-Routing/protofiles";
+
+service TestService {
+    rpc TestRPC (DummyRequest) returns (DummyResponse);
+}
+
+message DummyRequest {
+    string message = 1;
+}
+
+message DummyResponse {
+    string reply = 1;
+}

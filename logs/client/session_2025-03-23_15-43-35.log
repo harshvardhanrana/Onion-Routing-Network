@@ -1,0 +1,2 @@
+[2025-03-23 15:43:35] Request sending to server: message:"Hi, This is Client" 
+[2025-03-23 15:43:35] Response received from server: reply:"Hi, This is Test Server" 
