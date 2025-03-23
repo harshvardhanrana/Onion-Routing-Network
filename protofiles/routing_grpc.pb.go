@@ -119,3 +119,105 @@ var TestService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "protofiles/routing.proto",
 }
+
+const (
+	RelayNodeServer_RelayNodeRPC_FullMethodName = "/onion_routing.RelayNodeServer/RelayNodeRPC"
+)
+
+// RelayNodeServerClient is the client API for RelayNodeServer service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type RelayNodeServerClient interface {
+	RelayNodeRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
+}
+
+type relayNodeServerClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewRelayNodeServerClient(cc grpc.ClientConnInterface) RelayNodeServerClient {
+	return &relayNodeServerClient{cc}
+}
+
+func (c *relayNodeServerClient) RelayNodeRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DummyResponse)
+	err := c.cc.Invoke(ctx, RelayNodeServer_RelayNodeRPC_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RelayNodeServerServer is the server API for RelayNodeServer service.
+// All implementations must embed UnimplementedRelayNodeServerServer
+// for forward compatibility.
+type RelayNodeServerServer interface {
+	RelayNodeRPC(context.Context, *DummyRequest) (*DummyResponse, error)
+	mustEmbedUnimplementedRelayNodeServerServer()
+}
+
+// UnimplementedRelayNodeServerServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedRelayNodeServerServer struct{}
+
+func (UnimplementedRelayNodeServerServer) RelayNodeRPC(context.Context, *DummyRequest) (*DummyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RelayNodeRPC not implemented")
+}
+func (UnimplementedRelayNodeServerServer) mustEmbedUnimplementedRelayNodeServerServer() {}
+func (UnimplementedRelayNodeServerServer) testEmbeddedByValue()                         {}
+
+// UnsafeRelayNodeServerServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RelayNodeServerServer will
+// result in compilation errors.
+type UnsafeRelayNodeServerServer interface {
+	mustEmbedUnimplementedRelayNodeServerServer()
+}
+
+func RegisterRelayNodeServerServer(s grpc.ServiceRegistrar, srv RelayNodeServerServer) {
+	// If the following call pancis, it indicates UnimplementedRelayNodeServerServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&RelayNodeServer_ServiceDesc, srv)
+}
+
+func _RelayNodeServer_RelayNodeRPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DummyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RelayNodeServerServer).RelayNodeRPC(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RelayNodeServer_RelayNodeRPC_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RelayNodeServerServer).RelayNodeRPC(ctx, req.(*DummyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RelayNodeServer_ServiceDesc is the grpc.ServiceDesc for RelayNodeServer service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var RelayNodeServer_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "onion_routing.RelayNodeServer",
+	HandlerType: (*RelayNodeServerServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RelayNodeRPC",
+			Handler:    _RelayNodeServer_RelayNodeRPC_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "protofiles/routing.proto",
+}

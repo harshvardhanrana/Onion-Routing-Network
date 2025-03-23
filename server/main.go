@@ -4,9 +4,13 @@ import (
 	"context"
 	"log"
 	"net"
+	// "os"
 	routingpb "onion_routing/protofiles"
-	logging "onion_routing/common"
+	utils "onion_routing/utils"
 	"google.golang.org/grpc"
+	// "google.golang.org/grpc/credentials"
+	// "crypto/tls"
+	// "crypto/x509"
 )
 
 
@@ -15,7 +19,7 @@ const (
 )
 
 var (
-	serverLogger *logging.Logger
+	serverLogger *utils.Logger
 )
 
 type TestServer struct {
@@ -32,14 +36,18 @@ func (s *TestServer) TestRPC(ctx context.Context, req *routingpb.DummyRequest) (
 }
 
 func main() {
-	serverLogger = logging.NewLogger("logs/server")
+	creds := utils.LoadCredentialsAsServer("certificates/ca.crt", 
+											"certificates/server.crt", 
+											"certificates/server.key")	
+
+	serverLogger = utils.NewLogger("logs/server")
 	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
 		log.Fatalf("server failed to listen: %v", err)
 	}
 	defer listener.Close()
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.Creds(creds))
 	routingpb.RegisterTestServiceServer(server, &TestServer{})
 	log.Printf("Test Server running on %s\n", serverAddr)
 	err = server.Serve(listener)

@@ -4,33 +4,38 @@ import (
 	"context"
 	// "fmt"
 	"log"
-
 	routingpb "onion_routing/protofiles"
-	logging "onion_routing/common"
+	utils "onion_routing/utils"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
 	serverAddr = "localhost:23455"
+	relayAddr = "localhost:34502"
 )
 
 var (
-	clientLogger *logging.Logger
+	clientLogger *utils.Logger
 )
 
 func main(){
-	clientLogger = logging.NewLogger("logs/client")
-	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	creds := utils.LoadCredentialsAsClient("certificates/ca.crt", 
+											"certificates/client.crt",
+											"certificates/client.key")
+
+	clientLogger = utils.NewLogger("logs/client")
+	conn, err := grpc.NewClient(relayAddr, grpc.WithTransportCredentials(creds))
+	
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
 	}
 	defer conn.Close()
-	client := routingpb.NewTestServiceClient(conn)
+
+	client := routingpb.NewRelayNodeServerClient(conn)
 	req := &routingpb.DummyRequest{Message: "Hi, This is Client"}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
-	resp, err := client.TestRPC(context.Background(), req)
+	resp, err := client.RelayNodeRPC(context.Background(), req)
 	if err != nil {
 		log.Fatalf("error whiling calling rpc: %v\n", err)
 	}

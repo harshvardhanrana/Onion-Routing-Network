@@ -1,4 +1,4 @@
-package common 
+package utils 
 
 import (
 	"fmt"
@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 	"bufio"
-	// "context"
-	// "google.golang.org/grpc"
 )
 
 type Logger struct {

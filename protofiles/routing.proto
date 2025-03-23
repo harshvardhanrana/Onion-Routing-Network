@@ -8,6 +8,10 @@ service TestService {
     rpc TestRPC (DummyRequest) returns (DummyResponse);
 }
 
+service RelayNodeServer {
+    rpc RelayNodeRPC(DummyRequest) returns (DummyResponse);
+}
+
 message DummyRequest {
     string message = 1;
 }
