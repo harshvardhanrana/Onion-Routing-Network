@@ -16,13 +16,15 @@ RELAY_NODE_FILES = $(wildcard $(RELAY_NODE_DIR)/*.go)
 SERVER_FILES = $(wildcard $(SERVER_DIR)/*.go)
 DIRECTORY_SERVER_FILES = $(wildcard $(DIRECTORY_SERVER_DIR)/*.go)
 
+RELAY_NODE_ID ?= 1
+
 .PHONY: proto relay client server directory
 
 proto:
 	protoc $(PROTO_COMPILE_FLAGS) $(PROTO_FILES)
 
 relay:
-	go run $(RELAY_NODE_FILES)
+	go run $(RELAY_NODE_FILES) $(RELAY_NODE_ID)
 
 client:
 	go run $(CLIENT_FILES)
