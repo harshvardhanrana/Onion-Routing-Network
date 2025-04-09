@@ -37,8 +37,8 @@ func (s *TestServer) TestRPC(ctx context.Context, req *routingpb.DummyRequest) (
 
 func main() {
 	creds := utils.LoadCredentialsAsServer("certificates/ca.crt", 
-											"certificates/server.crt", 
-											"certificates/server.key")	
+										"certificates/server.crt", 
+										"certificates/server.key")	
 
 	serverLogger = utils.NewLogger("logs/server")
 	listener, err := net.Listen("tcp", serverAddr)
