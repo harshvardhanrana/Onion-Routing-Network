@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"time"
 
 	ecies "github.com/ecies/go/v2"
@@ -101,16 +99,16 @@ func checkEtcdStatus(etcdClient *clientv3.Client) error {
 	return err
 }
 
-func getPortAndIP(address string) (uint16, [4]byte) {
-	parts := strings.Split(address, ":")
-	port, _ := strconv.Atoi(parts[1])
-	ipBytes := [4]byte{192, 168, 1, 1}
-	return uint16(port), ipBytes
-}
+// func getPortAndIP(address string) (uint16, [4]byte) {
+// 	parts := strings.Split(address, ":")
+// 	port, _ := strconv.Atoi(parts[1])
+// 	ipBytes := [4]byte{192, 168, 1, 1}
+// 	return uint16(port), ipBytes
+// }
 
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode) {
 	// Innermost Layer (node 3)
-	server_port, server_ip := getPortAndIP(chosen_nodes[2].Address)
+	server_port, server_ip := utils.GetPortAndIP(chosen_nodes[2].Address)
 	server_port = uint16(23455)
 	third_cell := encryption.CreateCell(server_ip, server_port, []byte("Hello World"))
 	third_message := encryption.BuildMessage(third_cell)
@@ -123,7 +121,7 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 	}
 
 	// Middle Layer (node 2)
-	third_port, third_ip := getPortAndIP(chosen_nodes[2].Address)
+	third_port, third_ip := utils.GetPortAndIP(chosen_nodes[2].Address)
 	second_cell := encryption.CreateCell(third_ip, third_port, encrypted_third_message)
 	second_message := encryption.BuildMessage(second_cell)
 	encrypted_second_message, err := encryption.EncryptECC(second_message, chosen_nodes[1].PubKey)
@@ -133,7 +131,7 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 	}
 
 	// Outermost Layer (node 1)
-	second_port, second_ip := getPortAndIP(chosen_nodes[1].Address)
+	second_port, second_ip := utils.GetPortAndIP(chosen_nodes[1].Address)
 	// first_port, first_ip := getPortAndIP(chosen_nodes[0].Address)
 	first_cell := encryption.CreateCell(second_ip, second_port, encrypted_second_message)
 	first_message := encryption.BuildMessage(first_cell)

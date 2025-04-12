@@ -52,7 +52,7 @@ type CircuitInfo struct {
 	ForwardIP [4]byte
 	ForwardPort uint16
 	BackwardIP [4]byte
-	BackwardPort int
+	BackwardPort uint16
 	Expiration uint32
 	KeySeed [16]byte
 }
@@ -76,13 +76,19 @@ type RelayNodeServer struct {
 	routingpb.UnimplementedRelayNodeServerServer
 }
 
-func handleCreateCell(cell encryption.OnionCell, ctx context.Context,) {
+func handleCreateCell(cell encryption.OnionCell, ctx context.Context) uint16 {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		log.Println("Could not extract peer from context")
 	} else {
 		relayLogger.PrintLog("Request received from: %v", p.Addr.String())
 	}
+
+	_, backPort := utils.GetPortAndIP(p.Addr.String())
+	//TODO: Temporarily making backIP same as forward IP as localhost
+	backIPBytes := cell.IP
+	backPortUint, _ := strconv.Atoi(string(backPort[:]))
+	backPortUint16 := uint16(backPortUint)
 
 	cinfo := CircuitInfo{
 		BackF: cell.BackF,
@@ -91,13 +97,16 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context,) {
 		KeySeed: cell.KeySeed,
 		ForwardIP: cell.IP,
 		ForwardPort: cell.Port,
+		BackwardIP: backIPBytes,
+		BackwardPort: backPortUint16,
 	}
 
-
 	circuitInfoMap[cell.CircuitID] = cinfo
+
+	return cell.CircuitID
 }
 
-func handleRequest(ctx context.Context, req *routingpb.DummyRequest) {
+func handleRequest(ctx context.Context, req *routingpb.DummyRequest) uint16 {
 	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
 	decryptedMessage, err := encryption.DecryptECC(req.Message, privateKey)
 	if err != nil {
@@ -111,17 +120,26 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) {
 	switch rebuiltCell.CellType {
 	case 1: // create cell
 		fmt.Println("Create cell")
-		handleCreateCell(rebuiltCell, ctx)
+		circuitID := handleCreateCell(rebuiltCell, ctx)
+		return circuitID
 	}
-	
+	return 0
 }
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	relayLogger.PrintLog("Request recieved from client: %v", req)
 
-	handleRequest(ctx, req)
+	circuitID := handleRequest(ctx, req)
+	cinfo, exists := circuitInfoMap[circuitID]
+	if !exists {
+		log.Fatalf("Circuit ID %d not found in circuitInfoMap", circuitID)
+	}
+
+	sendAddr := fmt.Sprintf("%d.%d.%d.%d:%d", 
+		cinfo.ForwardIP[0], cinfo.ForwardIP[1], cinfo.ForwardIP[2], cinfo.ForwardIP[3], cinfo.ForwardPort)
+	fmt.Println("Send Address: ", sendAddr)
  
-	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+	conn, err := grpc.NewClient(sendAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
 	}
