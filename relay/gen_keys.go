@@ -5,11 +5,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
+	// "fmt"
 	"log"
 	"os"
 
 	"golang.org/x/crypto/ssh"
+	ecies "github.com/ecies/go/v2"
+
 )
 
 // generatePrivateKey creates a RSA Private Key of specified byte size
@@ -99,11 +101,20 @@ func genKeyPairs() (*rsa.PrivateKey, *rsa.PublicKey) {
 	publicKey := &privateKey.PublicKey
 
 	// For display or storage only
-	privateKeyBytes := encodePrivateKeyToPEM(privateKey)
-	publicKeyBytes := encodePublicKeyToPEM(publicKey)
+	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
+	// publicKeyBytes := encodePublicKeyToPEM(publicKey)
 
-	fmt.Println("Private Key (PEM):\n", string(privateKeyBytes))
-	fmt.Println("Public Key (PEM):\n", string(publicKeyBytes))
+	// fmt.Println("Private Key (PEM):\n", string(privateKeyBytes))
+	// fmt.Println("Public Key (PEM):\n", string(publicKeyBytes))
 
 	return privateKey, publicKey
+}
+
+func genECCKeyPair() (*ecies.PrivateKey, *ecies.PublicKey, error) {
+	priv, err := ecies.GenerateKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	pub := priv.PublicKey
+	return priv, pub, nil
 }

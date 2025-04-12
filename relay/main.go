@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"strconv"
 	"google.golang.org/grpc"
-	"crypto/rsa"
+	// "crypto/rsa"
+	"google.golang.org/grpc/peer"
 	// "google.golang.org/protobuf/proto"
-
+	ecies "github.com/ecies/go/v2"
+	
 	routingpb "onion_routing/protofiles"
 	utils "onion_routing/utils"
 	encryption "onion_routing/encryption"
@@ -27,9 +29,34 @@ const (
 
 type RelayNode struct {
 	Address string `json:"address"`
-	PubKey *rsa.PublicKey `json:"pub_key"`
+	PubKey *ecies.PublicKey `json:"pub_key"`
 	Load int `json:"load"`
 }
+
+// cell := OnionCell{
+// 	CellType:   1,                    // Create cell
+// 	CircuitID:  1001,                 // Example Circuit ID
+// 	Version:    1,                    // Version 1
+// 	BackF:      1,                    // Backward cipher (e.g., DES)
+// 	ForwF:      2,                    // Forward cipher (e.g., RC4)
+// 	Port:       9002,                 // Port number
+// 	IP:         [4]byte{192, 168, 1, 1}, // Destination IP
+// 	Expiration: 1700000000,           // Expiration time
+// 	KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
+// 	Payload:    []byte("Hello, Onion!"), // Payload
+// }
+
+type CircuitInfo struct {
+	BackF byte
+	ForwF byte
+	ForwardIP [4]byte
+	ForwardPort int
+	BackwardIP [4]byte
+	BackwardPort int
+	Expiration uint32
+	KeySeed [16]byte
+}
+
 
 var (
 	relayLogger *utils.Logger
@@ -37,18 +64,39 @@ var (
 	relayCredsAsClient credentials.TransportCredentials
 	relayAddr string
 	nodeID string 
-	pubKey *rsa.PublicKey
-	privateKey *rsa.PrivateKey
+	// pubKey *rsa.PublicKey
+	// privateKey *rsa.PrivateKey
+	privateKey *ecies.PrivateKey
+	pubKey *ecies.PublicKey
 	load int
+	circuitInfoMap = make(map[uint16]CircuitInfo)	// map of circuit id to circuit info
 )
 
 type RelayNodeServer struct {
 	routingpb.UnimplementedRelayNodeServerServer
 }
 
-func handleRequest(req *routingpb.DummyRequest) {
-	//  encryption.DecryptRSA(req.Message, privateKey)
-	decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
+func handleCreateCell(cell encryption.OnionCell, ctx context.Context,) {
+	cinfo := CircuitInfo{
+		BackF: cell.BackF,
+		ForwF: cell.ForwF,
+		Expiration: cell.Expiration,
+		KeySeed: cell.KeySeed,
+	}
+
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		log.Println("Could not extract peer from context")
+	} else {
+		relayLogger.PrintLog("Request received from: %v", p.Addr.String())
+	}
+
+	circuitInfoMap[cell.CircuitID] = cinfo
+}
+
+func handleRequest(ctx context.Context, req *routingpb.DummyRequest) {
+	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
+	decryptedMessage, err := encryption.DecryptECC(req.Message, privateKey)
 	if err != nil {
 		log.Fatalf("Failed to decrypt message: %v", err)
 	}
@@ -56,14 +104,20 @@ func handleRequest(req *routingpb.DummyRequest) {
 	fmt.Println("Decrypted message: ")
 	rebuiltCell := encryption.RebuildMessage(decryptedMessage)
 	fmt.Println(rebuiltCell.String())
+	fmt.Println("Size of decrypted message: ", len(decryptedMessage))
+	switch rebuiltCell.CellType {
+	case 1: // create cell
+		fmt.Println("Create cell")
+		handleCreateCell(rebuiltCell, ctx)
+	}
 	
 }
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	relayLogger.PrintLog("Request recieved from client: %v", req)
 
-	handleRequest(req)
-
+	handleRequest(ctx, req)
+ 
 	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
@@ -91,7 +145,11 @@ func main(){
 		// pubKey = fmt.Sprintf("node%d_pub_key",id)
 	}
 
-	privateKey, pubKey = genKeyPairs()
+	// RSA
+	// privateKey, pubKey = genKeyPairs()
+
+	//ECC
+	privateKey, pubKey, _ = genECCKeyPair()
 
 	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
 	// pubKeyBytes := encodePublicKeyToPEM(pubKey) 

@@ -3,30 +3,30 @@ package encryption
 import (
 	"fmt"
 	"io"
-	
-	"crypto/rand"
-	"crypto/cipher"
-	"encoding/binary"
-	"crypto/sha256"
-	"crypto/rc4"
+
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rc4"
 	"crypto/rsa"
-	
+	"crypto/sha256"
+	"encoding/binary"
+	ecies "github.com/ecies/go/v2"
 )
 
-const PAYLOADSIZE = 128
+const PAYLOADSIZE = 1024
 
 type OnionCell struct {
-	CellType   byte   // 1 byte (0 = Padding, 1 = Create, 2 = Data, 3 = Destroy)
-	CircuitID  uint16 // 2 bytes (Circuit ID)
-	Version    byte   // 1 byte
-	BackF      byte   // 1 byte (0 = DES)
-	ForwF      byte   // 1 byte (1 = RC4)
-	Port       uint16 // 2 bytes
-	IP         [4]byte // 4 bytes (IPv4)
-	Expiration uint32  // 4 bytes (UNIX timestamp)
+	CellType   byte     // 1 byte (0 = Padding, 1 = Create, 2 = Data, 3 = Destroy)
+	CircuitID  uint16   // 2 bytes (Circuit ID)
+	Version    byte     // 1 byte
+	BackF      byte     // 1 byte (0 = DES)
+	ForwF      byte     // 1 byte (1 = RC4)
+	Port       uint16   // 2 bytes
+	IP         [4]byte  // 4 bytes (IPv4)
+	Expiration uint32   // 4 bytes (UNIX timestamp)
 	KeySeed    [16]byte // 16 bytes (128-bit key seed)
-	Payload    []byte  // Variable length payload
+	Payload    []byte   // Variable length payload
 }
 
 func (cell OnionCell) String() string {
@@ -39,6 +39,7 @@ func (cell OnionCell) String() string {
 
 func BuildMessage(cell OnionCell) []byte {
 	data := make([]byte, 32+len(cell.Payload))
+	print("Size of payload: ", len(cell.Payload))
 
 	data[0] = cell.CellType
 	binary.BigEndian.PutUint16(data[1:3], cell.CircuitID)
@@ -72,13 +73,13 @@ func RebuildMessage(data []byte) OnionCell {
 }
 
 func DeriveKeys(seed []byte) (key1, key2, key3 []byte) {
-	hash1 := sha256.Sum256(seed) // First SHA-256 hash
+	hash1 := sha256.Sum256(seed)     // First SHA-256 hash
 	hash2 := sha256.Sum256(hash1[:]) // Second SHA-1 hash
 	hash3 := sha256.Sum256(hash2[:]) // Third SHA-1 hash
 
-	key1 = hash1[:8]   // First 8 bytes of first hash for DES
-	key2 = hash2[:16]  // First 16 bytes of second hash for RC4
-	key3 = hash3[:16]  // First 16 bytes of third hash for AES
+	key1 = hash1[:8]  // First 8 bytes of first hash for DES
+	key2 = hash2[:16] // First 16 bytes of second hash for RC4
+	key3 = hash3[:16] // First 16 bytes of third hash for AES
 
 	return key1, key2, key3
 }
@@ -161,6 +162,15 @@ func DecryptRSA(encryptedData []byte, privateKey *rsa.PrivateKey) ([]byte, error
 	return decryptedData, nil
 }
 
+func EncryptECC(data []byte, publicKey *ecies.PublicKey) ([]byte, error) {
+	return ecies.Encrypt(publicKey, data)
+}
+
+// DecryptECC decrypts data using the recipient's private ECC key
+func DecryptECC(encryptedData []byte, privateKey *ecies.PrivateKey) ([]byte, error) {
+	return ecies.Decrypt(privateKey, encryptedData)
+}
+
 func EncryptWithKey(ForwF byte, data []byte, key []byte) []byte {
 	switch ForwF {
 	case 1: // RC4
@@ -181,21 +191,26 @@ func EncryptDataClient(data []byte, forward_keys [][]byte) []byte {
 	return data
 }
 
-func SampleCell() OnionCell {
+func CreateCell(ip [4]byte, port uint16, payload []byte) OnionCell {
+	key_seed := make([]byte, 16)
+	rand.Read(key_seed)
+
 	cell := OnionCell{
-		CellType:   1,                    // Create cell
-		CircuitID:  1001,                 // Example Circuit ID
-		Version:    1,                    // Version 1
-		BackF:      1,                    // Backward cipher (e.g., DES)
-		ForwF:      2,                    // Forward cipher (e.g., RC4)
-		Port:       9002,                 // Port number
-		IP:         [4]byte{192, 168, 1, 1}, // Destination IP
-		Expiration: 1700000000,           // Expiration time
-		KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
-		Payload:    []byte("Hello, Onion!"), // Payload
+		CellType:   1,          // Create cell
+		CircuitID:  1001,       // Example Circuit ID
+		Version:    1,          // Version 1
+		BackF:      1,          // Backward cipher (e.g., DES)
+		ForwF:      2,          // Forward cipher (e.g., RC4)
+		Port:       port,       // Port number
+		IP:         ip,         // Destination IP
+		Expiration: 1700000000, // Expiration time
+		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
+		KeySeed: [16]byte(key_seed), // Random key seed
+		Payload: payload,            // Payload
 	}
 	return cell
 }
+
 
 func main() {
 	// cell := OnionCell{
@@ -211,7 +226,7 @@ func main() {
 	// 	Payload:    []byte("Hello, Onion!"), // Payload
 	// }
 
-	cell := SampleCell()
+	cell := CreateCell([4]byte{192, 168, 1, 1}, 9002, []byte("Hello, Onion!"))
 
 	message := BuildMessage(cell)
 
@@ -256,5 +271,20 @@ func main() {
 	}
 	fmt.Printf("Encrypted Data: %x\n", encryptedData)
 	fmt.Printf("Decrypted Data: %s\n", decryptedData)
+
+	// check ecc
+	// priv, pub, err := genECCKeyPair()
+	// encryptedECCData, err := EncryptECC(cell.Payload, pub)
+	// if err != nil {
+	// 	fmt.Println("Error encrypting ECC data:", err)
+	// 	return
+	// }
+	// decryptedECCData, err := DecryptECC(encryptedECCData, priv)
+	// if err != nil {
+	// 	fmt.Println("Error decrypting ECC data:", err)
+	// 	return
+	// }
+	// fmt.Printf("Encrypted ECC Data: %x\n", encryptedECCData)
+	// fmt.Printf("Decrypted ECC Data: %s\n", decryptedECCData)
 
 }
