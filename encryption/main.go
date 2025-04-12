@@ -1,11 +1,19 @@
-package main
+package encryption
 
 import (
-	"encoding/binary"
 	"fmt"
+	"io"
+	
+	"crypto/rand"
+	"crypto/cipher"
+	"encoding/binary"
 	"crypto/sha256"
-	// "net"
+	"crypto/rc4"
+	"crypto/aes"
+	
 )
+
+const PAYLOADSIZE = 128
 
 type OnionCell struct {
 	CellType   byte   // 1 byte (0 = Padding, 1 = Create, 2 = Data, 3 = Destroy)
@@ -28,7 +36,7 @@ func (cell OnionCell) String() string {
 	)
 }
 
-func buildMessage(cell OnionCell) []byte {
+func BuildMessage(cell OnionCell) []byte {
 	data := make([]byte, 32+len(cell.Payload))
 
 	data[0] = cell.CellType
@@ -45,7 +53,7 @@ func buildMessage(cell OnionCell) []byte {
 	return data
 }
 
-func rebuildMessage(data []byte) OnionCell {
+func RebuildMessage(data []byte) OnionCell {
 	cell := OnionCell{}
 
 	cell.CellType = data[0]
@@ -62,7 +70,7 @@ func rebuildMessage(data []byte) OnionCell {
 	return cell
 }
 
-func deriveKeys(seed []byte) (key1, key2, key3 []byte) {
+func DeriveKeys(seed []byte) (key1, key2, key3 []byte) {
 	hash1 := sha256.Sum256(seed) // First SHA-256 hash
 	hash2 := sha256.Sum256(hash1[:]) // Second SHA-1 hash
 	hash3 := sha256.Sum256(hash2[:]) // Third SHA-1 hash
@@ -74,8 +82,89 @@ func deriveKeys(seed []byte) (key1, key2, key3 []byte) {
 	return key1, key2, key3
 }
 
+func EncryptRC4(data []byte, key []byte) []byte {
+	cipher, err := rc4.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	encrypted := make([]byte, len(data))
+	cipher.XORKeyStream(encrypted, data)
+	return encrypted
+}
 
-func main() {
+func EncryptAESCTR(data []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, err
+	}
+
+	stream := cipher.NewCTR(block, iv)
+
+	encrypted := make([]byte, len(data))
+	stream.XORKeyStream(encrypted, data)
+
+	iv_appended_encryption := append(iv, encrypted...)
+
+	return iv_appended_encryption, nil
+}
+
+func DecryptRC4(data []byte, key []byte) []byte {
+	cipher, err := rc4.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	decrypted := make([]byte, len(data))
+	cipher.XORKeyStream(decrypted, data)
+	return decrypted
+}
+
+func DecryptAESCTR(data []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) < aes.BlockSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	iv := data[:aes.BlockSize]
+	ciphertext := data[aes.BlockSize:]
+
+	stream := cipher.NewCTR(block, iv)
+
+	decrypted := make([]byte, len(ciphertext))
+	stream.XORKeyStream(decrypted, ciphertext)
+
+	return decrypted, nil
+}
+
+func EncryptWithKey(ForwF byte, data []byte, key []byte) []byte {
+	switch ForwF {
+	case 1: // RC4
+		return EncryptRC4(data, key)
+	case 2: // AES
+		encrypted, _ := EncryptAESCTR(data, key)
+		return encrypted
+	default:
+		return nil
+	}
+}
+
+func EncryptDataClient(data []byte, forward_keys [][]byte) []byte {
+	for i := len(forward_keys) - 1; i >= 0; i-- {
+		key := forward_keys[i]
+		data = EncryptWithKey(1, data, key)
+	}
+	return data
+}
+
+func SampleCell() OnionCell {
 	cell := OnionCell{
 		CellType:   1,                    // Create cell
 		CircuitID:  1001,                 // Example Circuit ID
@@ -88,16 +177,48 @@ func main() {
 		KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		Payload:    []byte("Hello, Onion!"), // Payload
 	}
+	return cell
+}
 
-	message := buildMessage(cell)
+func main() {
+	// cell := OnionCell{
+	// 	CellType:   1,                    // Create cell
+	// 	CircuitID:  1001,                 // Example Circuit ID
+	// 	Version:    1,                    // Version 1
+	// 	BackF:      1,                    // Backward cipher (e.g., DES)
+	// 	ForwF:      2,                    // Forward cipher (e.g., RC4)
+	// 	Port:       9002,                 // Port number
+	// 	IP:         [4]byte{192, 168, 1, 1}, // Destination IP
+	// 	Expiration: 1700000000,           // Expiration time
+	// 	KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
+	// 	Payload:    []byte("Hello, Onion!"), // Payload
+	// }
+
+	cell := SampleCell()
+
+	message := BuildMessage(cell)
 
 	fmt.Printf("Built Message:\n%x\n", message)
 
 	fmt.Printf("Size of message: %d bytes\n", len(message))
 
-	rebuiltCell := rebuildMessage(message)
+	rebuiltCell := RebuildMessage(message)
 
 	fmt.Printf("Rebuilt Cell:\n")
 	fmt.Println(rebuiltCell.String())
+
+	// check rc4
+	_, key2, _ := DeriveKeys(cell.KeySeed[:])
+	encryptedPayload := EncryptRC4(cell.Payload, key2)
+	fmt.Printf("Encrypted Payload: %x\n", encryptedPayload)
+	decryptedPayload := DecryptRC4(encryptedPayload, key2)
+	fmt.Printf("Decrypted Payload: %s\n", decryptedPayload)
+
+	// check aes
+	encryptedPayloadAES, _ := EncryptAESCTR(cell.Payload, key2)
+	fmt.Printf("Encrypted Payload AES: %x\n", encryptedPayloadAES)
+	decryptedPayloadAES, _ := DecryptAESCTR(encryptedPayloadAES, key2)
+	fmt.Printf("Decrypted Payload AES: %s\n", decryptedPayloadAES)
+
 
 }

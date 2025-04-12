@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	// "fmt"
+	"fmt"
 	"log"
 	routingpb "onion_routing/protofiles"
+	encryption "onion_routing/encryption"
 	utils "onion_routing/utils"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 var (
 	relayAddr = ""
+	relayAddrs = []string{}
 	clientLogger *utils.Logger
 )
 
@@ -45,7 +47,7 @@ func getAvailableRelayNodes(etcdClient *clientv3.Client) ([]RelayNode, error) {
 		}
 		nodes = append(nodes, node)
 	}
-	log.Printf("%v", nodes)
+	log.Printf("Nodes: %v", nodes)
 	return nodes, nil
 }
 
@@ -63,6 +65,40 @@ func checkEtcdStatus(etcdClient *clientv3.Client)(error){
 	defer cancel()
 	_, err := etcdClient.Status(ctx, utils.EtcdServerAddr)
 	return err
+}
+
+func startCreationRoute(client routingpb.RelayNodeServerClient){
+	cell := encryption.SampleCell()
+
+	var message = encryption.BuildMessage(cell)
+
+	fmt.Printf("Built Message:\n%x\n", message)
+
+	fmt.Printf("Size of message: %d bytes\n", len(message))
+
+	req := &routingpb.DummyRequest{Message: message}
+
+	clientLogger.PrintLog("Request sending to server: %v", req)
+	resp, err := client.RelayNodeRPC(context.Background(), req)
+	if err != nil {
+		log.Fatalf("error whiling calling rpc: %v\n", err)
+	}
+
+	clientLogger.PrintLog("Response received from server: %v", resp)
+	log.Printf("Response received from server: %s", resp.Reply)
+
+}
+
+func GetNodesInRoute(nodes []RelayNode) (){
+	if len(nodes) >= 3 {
+		relayAddr = nodes[0].Address
+		relayAddrs = append(relayAddrs, nodes[0].Address)
+		relayAddrs = append(relayAddrs, nodes[1].Address)
+		relayAddrs = append(relayAddrs, nodes[2].Address)
+	} else {
+		log.Fatalf("Not enough relay nodes available")
+	}
+
 }
 
 func main(){
@@ -84,12 +120,11 @@ func main(){
 	if err != nil {
 		log.Fatalf("error while fetching avaliable relays: %v", err)
 	}
-	if len(nodes) > 0 {
-		relayAddr = nodes[0].Address
-	}
+	
+	GetNodesInRoute(nodes)
 	
 	clientLogger = utils.NewLogger("logs/client")
-	conn, err := grpc.NewClient(relayAddr, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(relayAddrs[0], grpc.WithTransportCredentials(creds))
 	
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
@@ -97,14 +132,16 @@ func main(){
 	defer conn.Close()
 
 	client := routingpb.NewRelayNodeServerClient(conn)
-	req := &routingpb.DummyRequest{Message: "Hi, This is Client"}
 
-	clientLogger.PrintLog("Request sending to server: %v", req)
-	resp, err := client.RelayNodeRPC(context.Background(), req)
-	if err != nil {
-		log.Fatalf("error whiling calling rpc: %v\n", err)
-	}
+	startCreationRoute(client)
+	// req := &routingpb.DummyRequest{Message: "Hi, This is Client"}
 
-	clientLogger.PrintLog("Response received from server: %v", resp)
-	log.Printf("Response received from server: %s", resp.Reply)
+	// clientLogger.PrintLog("Request sending to server: %v", req)
+	// resp, err := client.RelayNodeRPC(context.Background(), req)
+	// if err != nil {
+	// 	log.Fatalf("error whiling calling rpc: %v\n", err)
+	// }
+
+	// clientLogger.PrintLog("Response received from server: %v", resp)
+	// log.Printf("Response received from server: %s", resp.Reply)
 }

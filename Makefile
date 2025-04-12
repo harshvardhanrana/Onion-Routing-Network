@@ -23,6 +23,9 @@ RELAY_NODE_ID ?= 1
 proto:
 	protoc $(PROTO_COMPILE_FLAGS) $(PROTO_FILES)
 
+etcd:
+	etcd --listen-client-urls http://localhost:2379 --advertise-client-urls http://localhost:2379
+
 relay:
 	go run $(RELAY_NODE_FILES) $(RELAY_NODE_ID)
 

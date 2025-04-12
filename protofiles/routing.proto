@@ -13,7 +13,7 @@ service RelayNodeServer {
 }
 
 message DummyRequest {
-    string message = 1;
+    bytes message = 1;
 }
 
 message DummyResponse {
