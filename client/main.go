@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
-	"time"
-	// "crypto/rsa"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
+
 	ecies "github.com/ecies/go/v2"
 
 	routingpb "onion_routing/protofiles"
@@ -19,53 +20,81 @@ import (
 	"google.golang.org/grpc"
 )
 
-// const (
-// 	serverAddr = "localhost:23455"
-// )
-
 var (
 	clientLogger *utils.Logger
-	nodes []RelayNode
+	nodes        []RelayNode
 )
 
-
 type RelayNode struct {
-	Address string `json:"address"`
-	// PubKey *rsa.PublicKey `json:"pub_key"`
-	PubKey *ecies.PublicKey `json:"pub_key"`
-	Load int `json:"load"`
+	Address string           `json:"address"`
+	PubKey  *ecies.PublicKey `json:"pub_key"`
+	Load    int              `json:"load"`
 }
 
+// Custom UnmarshalJSON method to handle decoding the pub_key
+func (r *RelayNode) UnmarshalJSON(data []byte) error {
+	// Create a temporary struct that stores the pub_key as a string.
+	type Alias RelayNode
+	aux := &struct {
+		PubKey string `json:"pub_key"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	// Unmarshal into the auxiliary struct.
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Decode the base64 encoded public key string.
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(aux.PubKey)
+	if err != nil {
+		return fmt.Errorf("failed to decode pub_key: %v", err)
+	}
+
+	// Use ecies.ImportECDSAPublic to import the decoded bytes.
+	r.PubKey, err = ecies.NewPublicKeyFromBytes(pubKeyBytes)
+	if err != nil {
+		return fmt.Errorf("failed to import pub_key: %v", err)
+	}
+
+	return nil
+}
+
+// getAvailableRelayNodes unmarshals relay node data from etcd.
+// The custom UnmarshalJSON on RelayNode will automatically decode the public key.
 func getAvailableRelayNodes(etcdClient *clientv3.Client) ([]RelayNode, error) {
-	nodes = []RelayNode{}
+	nodes := []RelayNode{}
 	resp, err := etcdClient.Get(context.Background(), utils.EtcdKeyPrefix, clientv3.WithPrefix())
 	if err != nil {
 		log.Printf("Failed to fetch relay nodes: %v", err)
 		return nodes, err
 	}
+
 	for _, ev := range resp.Kvs {
-		var node RelayNode 
-		err := json.Unmarshal(ev.Value, &node)
-		if err != nil {
+		var node RelayNode
+		// This call uses the custom UnmarshalJSON method.
+		if err := json.Unmarshal(ev.Value, &node); err != nil {
 			log.Printf("Failed to decode relay node data: %v", err)
 			continue
 		}
 		nodes = append(nodes, node)
 	}
+
 	log.Printf("Nodes: %v", nodes)
 	return nodes, nil
 }
 
-
-func initEtcdClient()(*clientv3.Client, error){
+func initEtcdClient() (*clientv3.Client, error) {
 	etcdClient, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{utils.EtcdServerAddr},
+		Endpoints:   []string{utils.EtcdServerAddr},
 		DialTimeout: utils.EtcdTimeOutInterval * time.Second,
 	})
 	return etcdClient, err
 }
 
-func checkEtcdStatus(etcdClient *clientv3.Client)(error){
+func checkEtcdStatus(etcdClient *clientv3.Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_, err := etcdClient.Status(ctx, utils.EtcdServerAddr)
@@ -75,123 +104,99 @@ func checkEtcdStatus(etcdClient *clientv3.Client)(error){
 func getPortAndIP(address string) (uint16, [4]byte) {
 	parts := strings.Split(address, ":")
 	port, _ := strconv.Atoi(parts[1])
-	// ip := parts[0]
-	// ipParts := strings.Split(ip, ".")
-	// var ipBytes [4]byte
-	// for i, part := range ipParts {
-	// 	num, err := strconv.Atoi(part)
-	// 	if err != nil {
-	// 		log.Fatalf("Invalid IP address: %v", err)
-	// 	}
-	// 	ipBytes[i] = byte(num)
-	// }
 	ipBytes := [4]byte{192, 168, 1, 1}
 	return uint16(port), ipBytes
 }
 
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode) {
-
 	// Innermost Layer (node 3)
-	third_port, third_ip := getPortAndIP(chosen_nodes[2].Address)
-	third_cell := encryption.CreateCell(third_ip, third_port, []byte("Hello World"))
-	var third_message = encryption.BuildMessage(third_cell)
+	server_port, server_ip := getPortAndIP(chosen_nodes[2].Address)
+	server_port = uint16(23455)
+	third_cell := encryption.CreateCell(server_ip, server_port, []byte("Hello World"))
+	third_message := encryption.BuildMessage(third_cell)
 
-	fmt.Printf("Built Message:\n%x\n", third_message)
-	fmt.Printf("Size of third_message: %d bytes\n", len(third_message))
-
-	// encrypted_third_message, _ := encryption.EncryptRSA(third_message, chosen_nodes[2].PubKey)
-	encrypted_third_message, _ := encryption.EncryptECC(third_message, chosen_nodes[2].PubKey)
-	// encrypted_third_message := third_message
+	// Encrypt using ECC
+	encrypted_third_message, err := encryption.EncryptECC(third_message, chosen_nodes[2].PubKey)
+	if err != nil {
+		log.Printf("Error encrypting third message: %v", err)
+		return
+	}
 
 	// Middle Layer (node 2)
-	second_port, second_ip := getPortAndIP(chosen_nodes[1].Address)
-	second_cell := encryption.CreateCell(second_ip, second_port, encrypted_third_message)
-	var second_message = encryption.BuildMessage(second_cell)
-	fmt.Printf("Built Message:\n%x\n", second_message)
-	fmt.Printf("Size of second_message: %d bytes\n", len(second_message))
-
-	// encrypted_second_message, _ := encryption.EncryptRSA(second_message, chosen_nodes[1].PubKey)
-	encrypted_second_message, _ := encryption.EncryptECC(second_message, chosen_nodes[1].PubKey)
-	// encrypted_second_message := second_message
+	third_port, third_ip := getPortAndIP(chosen_nodes[2].Address)
+	second_cell := encryption.CreateCell(third_ip, third_port, encrypted_third_message)
+	second_message := encryption.BuildMessage(second_cell)
+	encrypted_second_message, err := encryption.EncryptECC(second_message, chosen_nodes[1].PubKey)
+	if err != nil {
+		log.Printf("Error encrypting second message: %v", err)
+		return
+	}
 
 	// Outermost Layer (node 1)
-	first_port, first_ip := getPortAndIP(chosen_nodes[0].Address)
-	first_cell := encryption.CreateCell(first_ip, first_port, encrypted_second_message)
-	// fmt.Printf("Size of first_cell payload: %d bytes\n", len(first_cell.Payload))
-	var first_message = encryption.BuildMessage(first_cell)
-	fmt.Printf("Built Message:\n%x\n", first_message)
-	fmt.Printf("Size of first_message: %d bytes\n", len(first_message))
+	second_port, second_ip := getPortAndIP(chosen_nodes[1].Address)
+	// first_port, first_ip := getPortAndIP(chosen_nodes[0].Address)
+	first_cell := encryption.CreateCell(second_ip, second_port, encrypted_second_message)
+	first_message := encryption.BuildMessage(first_cell)
+	encrypted_first_message, err := encryption.EncryptECC(first_message, chosen_nodes[0].PubKey)
+	if err != nil {
+		log.Printf("Error encrypting first message: %v", err)
+		return
+	}
 
-	// encrypted_first_message, _ := encryption.EncryptRSA(first_message, chosen_nodes[0].PubKey)
-	encrypted_first_message, _ := encryption.EncryptECC(first_message, chosen_nodes[0].PubKey)
-	// encrypted_first_message := first_message
-
-	// Send the encrypted message to the first relay node
 	req := &routingpb.DummyRequest{Message: encrypted_first_message}
 
-	// Client -> OR1
 	clientLogger.PrintLog("Request sending to server: %v", req)
 	resp, err := client.RelayNodeRPC(context.Background(), req)
 	if err != nil {
-		log.Fatalf("error whiling calling rpc: %v\n", err)
+		log.Fatalf("error while calling rpc: %v\n", err)
 	}
 
 	clientLogger.PrintLog("Response received from server: %v", resp)
 	log.Printf("Response received from server: %s", resp.Reply)
-
 }
 
-//TODO: Immplement this function later
+// GetNodesInRoute is a helper to pick 3 nodes from the list.
 func GetNodesInRoute(nodes []RelayNode) []RelayNode {
 	chosen_nodes := []RelayNode{}
-	for i := 0; i < 3; i++ {
-		fmt.Println("IP Address: ", nodes[i].Address)
+	for i := 0; i < 3 && i < len(nodes); i++ {
+		// fmt.Println("IP Address:", nodes[i].Address)
 		chosen_nodes = append(chosen_nodes, nodes[i])
 	}
 	return chosen_nodes
 }
 
-func main(){
-	creds := utils.LoadCredentialsAsClient("certificates/ca.crt", 
-											"certificates/client.crt",
-											"certificates/client.key")
+func main() {
+	creds := utils.LoadCredentialsAsClient("certificates/ca.crt",
+		"certificates/client.crt",
+		"certificates/client.key")
 
 	etcdClient, err := initEtcdClient()
 	if err != nil {
 		log.Fatalf("Failed to initialize etcd client: %v", err)
 	}
 	defer etcdClient.Close()
+
 	err = checkEtcdStatus(etcdClient)
 	if err != nil {
 		log.Fatalf("Etcd Server is unreachable: %v", err)
 	}
-	
-	nodes, err := getAvailableRelayNodes(etcdClient)
+
+	nodes, err = getAvailableRelayNodes(etcdClient)
 	if err != nil {
-		log.Fatalf("error while fetching avaliable relays: %v", err)
+		log.Fatalf("Error while fetching available relays: %v", err)
 	}
-	
+
 	chosen_nodes := GetNodesInRoute(nodes)
-	
+
 	clientLogger = utils.NewLogger("logs/client")
-	conn, err := grpc.NewClient(nodes[0].Address, grpc.WithTransportCredentials(creds))
-	
+	// Use grpc.Dial to create a connection.
+	conn, err := grpc.Dial(nodes[0].Address, grpc.WithTransportCredentials(creds))
 	if err != nil {
-		log.Fatalf("error while connecting to server: %v\n", err)
+		log.Fatalf("Error while connecting to server: %v\n", err)
 	}
 	defer conn.Close()
 
 	client := routingpb.NewRelayNodeServerClient(conn)
 
 	startCreationRoute(client, chosen_nodes)
-	// req := &routingpb.DummyRequest{Message: "Hi, This is Client"}
-
-	// clientLogger.PrintLog("Request sending to server: %v", req)
-	// resp, err := client.RelayNodeRPC(context.Background(), req)
-	// if err != nil {
-	// 	log.Fatalf("error whiling calling rpc: %v\n", err)
-	// }
-
-	// clientLogger.PrintLog("Response received from server: %v", resp)
-	// log.Printf("Response received from server: %s", resp.Reply)
 }

@@ -39,7 +39,6 @@ func (cell OnionCell) String() string {
 
 func BuildMessage(cell OnionCell) []byte {
 	data := make([]byte, 32+len(cell.Payload))
-	print("Size of payload: ", len(cell.Payload))
 
 	data[0] = cell.CellType
 	binary.BigEndian.PutUint16(data[1:3], cell.CircuitID)

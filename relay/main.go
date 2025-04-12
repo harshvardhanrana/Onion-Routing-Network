@@ -29,7 +29,7 @@ const (
 
 type RelayNode struct {
 	Address string `json:"address"`
-	PubKey *ecies.PublicKey `json:"pub_key"`
+	PubKey  string `json:"pub_key"`
 	Load int `json:"load"`
 }
 
@@ -50,7 +50,7 @@ type CircuitInfo struct {
 	BackF byte
 	ForwF byte
 	ForwardIP [4]byte
-	ForwardPort int
+	ForwardPort uint16
 	BackwardIP [4]byte
 	BackwardPort int
 	Expiration uint32
@@ -77,19 +77,22 @@ type RelayNodeServer struct {
 }
 
 func handleCreateCell(cell encryption.OnionCell, ctx context.Context,) {
-	cinfo := CircuitInfo{
-		BackF: cell.BackF,
-		ForwF: cell.ForwF,
-		Expiration: cell.Expiration,
-		KeySeed: cell.KeySeed,
-	}
-
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		log.Println("Could not extract peer from context")
 	} else {
 		relayLogger.PrintLog("Request received from: %v", p.Addr.String())
 	}
+
+	cinfo := CircuitInfo{
+		BackF: cell.BackF,
+		ForwF: cell.ForwF,
+		Expiration: cell.Expiration,
+		KeySeed: cell.KeySeed,
+		ForwardIP: cell.IP,
+		ForwardPort: cell.Port,
+	}
+
 
 	circuitInfoMap[cell.CircuitID] = cinfo
 }
