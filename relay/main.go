@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"google.golang.org/grpc"
+	"crypto/rsa"
 	// "google.golang.org/protobuf/proto"
 
 	routingpb "onion_routing/protofiles"
@@ -26,7 +27,7 @@ const (
 
 type RelayNode struct {
 	Address string `json:"address"`
-	PubKey string `json:"pub_key"`
+	PubKey *rsa.PublicKey `json:"pub_key"`
 	Load int `json:"load"`
 }
 
@@ -36,7 +37,8 @@ var (
 	relayCredsAsClient credentials.TransportCredentials
 	relayAddr string
 	nodeID string 
-	pubKey string
+	pubKey *rsa.PublicKey
+	privateKey *rsa.PrivateKey
 	load int
 )
 
@@ -45,7 +47,14 @@ type RelayNodeServer struct {
 }
 
 func handleRequest(req *routingpb.DummyRequest) {
-	rebuiltCell := encryption.RebuildMessage(req.Message)
+	//  encryption.DecryptRSA(req.Message, privateKey)
+	decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
+	if err != nil {
+		log.Fatalf("Failed to decrypt message: %v", err)
+	}
+
+	fmt.Println("Decrypted message: ")
+	rebuiltCell := encryption.RebuildMessage(decryptedMessage)
 	fmt.Println(rebuiltCell.String())
 	
 }
@@ -79,8 +88,13 @@ func main(){
 			log.Fatalf("Invalid command line argument; expecting integer value")
 		}
 		nodeID = fmt.Sprintf("node%d",id)
-		pubKey = fmt.Sprintf("node%d_pub_key",id)
+		// pubKey = fmt.Sprintf("node%d_pub_key",id)
 	}
+
+	privateKey, pubKey = genKeyPairs()
+
+	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
+	// pubKeyBytes := encodePublicKeyToPEM(pubKey) 
 
 	relayCredsAsClient = utils.LoadCredentialsAsClient("certificates/ca.crt", 
 												  "certificates/relay_node.crt",

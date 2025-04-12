@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/rc4"
 	"crypto/aes"
+	"crypto/rsa"
 	
 )
 
@@ -144,6 +145,22 @@ func DecryptAESCTR(data []byte, key []byte) ([]byte, error) {
 	return decrypted, nil
 }
 
+func EncryptRSA(data []byte, publicKey *rsa.PublicKey) ([]byte, error) {
+	encryptedData, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, data, nil)
+	if err != nil {
+		return nil, err
+	}
+	return encryptedData, nil
+}
+
+func DecryptRSA(encryptedData []byte, privateKey *rsa.PrivateKey) ([]byte, error) {
+	decryptedData, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privateKey, encryptedData, nil)
+	if err != nil {
+		return nil, err
+	}
+	return decryptedData, nil
+}
+
 func EncryptWithKey(ForwF byte, data []byte, key []byte) []byte {
 	switch ForwF {
 	case 1: // RC4
@@ -220,5 +237,24 @@ func main() {
 	decryptedPayloadAES, _ := DecryptAESCTR(encryptedPayloadAES, key2)
 	fmt.Printf("Decrypted Payload AES: %s\n", decryptedPayloadAES)
 
+	// check rsa
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		fmt.Println("Error generating RSA key:", err)
+		return
+	}
+	publicKey := &privateKey.PublicKey
+	encryptedData, err := EncryptRSA(cell.Payload, publicKey)
+	if err != nil {
+		fmt.Println("Error encrypting data:", err)
+		return
+	}
+	decryptedData, err := DecryptRSA(encryptedData, privateKey)
+	if err != nil {
+		fmt.Println("Error decrypting data:", err)
+		return
+	}
+	fmt.Printf("Encrypted Data: %x\n", encryptedData)
+	fmt.Printf("Decrypted Data: %s\n", decryptedData)
 
 }

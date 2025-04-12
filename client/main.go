@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
+	"crypto/rsa"
+
 	routingpb "onion_routing/protofiles"
 	encryption "onion_routing/encryption"
 	utils "onion_routing/utils"
-	"time"
 
 	"go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
@@ -19,20 +21,19 @@ import (
 // )
 
 var (
-	relayAddr = ""
-	relayAddrs = []string{}
 	clientLogger *utils.Logger
+	nodes []RelayNode
 )
 
 
 type RelayNode struct {
 	Address string `json:"address"`
-	PubKey string `json:"pub_key"`
+	PubKey *rsa.PublicKey `json:"pub_key"`
 	Load int `json:"load"`
 }
 
 func getAvailableRelayNodes(etcdClient *clientv3.Client) ([]RelayNode, error) {
-	var nodes []RelayNode
+	nodes = []RelayNode{}
 	resp, err := etcdClient.Get(context.Background(), utils.EtcdKeyPrefix, clientv3.WithPrefix())
 	if err != nil {
 		log.Printf("Failed to fetch relay nodes: %v", err)
@@ -76,7 +77,13 @@ func startCreationRoute(client routingpb.RelayNodeServerClient){
 
 	fmt.Printf("Size of message: %d bytes\n", len(message))
 
-	req := &routingpb.DummyRequest{Message: message}
+	// pprint pubkey 
+	fmt.Print("Public Key: ")
+	fmt.Printf("%v\n", nodes[0].PubKey)
+
+	encrypted_message, err := encryption.EncryptRSA(message, nodes[0].PubKey)
+
+	req := &routingpb.DummyRequest{Message: encrypted_message}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
 	resp, err := client.RelayNodeRPC(context.Background(), req)
@@ -89,15 +96,8 @@ func startCreationRoute(client routingpb.RelayNodeServerClient){
 
 }
 
+//TODO: Immplement this function later
 func GetNodesInRoute(nodes []RelayNode) (){
-	if len(nodes) >= 3 {
-		relayAddr = nodes[0].Address
-		relayAddrs = append(relayAddrs, nodes[0].Address)
-		relayAddrs = append(relayAddrs, nodes[1].Address)
-		relayAddrs = append(relayAddrs, nodes[2].Address)
-	} else {
-		log.Fatalf("Not enough relay nodes available")
-	}
 
 }
 
@@ -124,7 +124,7 @@ func main(){
 	GetNodesInRoute(nodes)
 	
 	clientLogger = utils.NewLogger("logs/client")
-	conn, err := grpc.NewClient(relayAddrs[0], grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(nodes[0].Address, grpc.WithTransportCredentials(creds))
 	
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
