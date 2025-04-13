@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	ServerAddr = "localhost:45034"
 	EtcdServerAddr = "localhost:2379"
 	EtcdTimeOutInterval time.Duration = 5
 	EtcdLeaseTTL int64 = 3

@@ -21,6 +21,7 @@ import (
 var (
 	clientLogger *utils.Logger
 	nodes        []RelayNode
+	serverAddr = "localhost:23455"
 )
 
 type RelayNode struct {
@@ -63,7 +64,7 @@ func (r *RelayNode) UnmarshalJSON(data []byte) error {
 // getAvailableRelayNodes unmarshals relay node data from etcd.
 // The custom UnmarshalJSON on RelayNode will automatically decode the public key.
 func getAvailableRelayNodes(etcdClient *clientv3.Client) ([]RelayNode, error) {
-	nodes := []RelayNode{}
+	// nodes := []RelayNode{}
 	resp, err := etcdClient.Get(context.Background(), utils.EtcdKeyPrefix, clientv3.WithPrefix())
 	if err != nil {
 		log.Printf("Failed to fetch relay nodes: %v", err)
@@ -108,8 +109,8 @@ func checkEtcdStatus(etcdClient *clientv3.Client) error {
 
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode) {
 	// Innermost Layer (node 3)
-	server_port, server_ip := utils.GetPortAndIP(chosen_nodes[2].Address)
-	server_port = uint16(23455)
+	server_port, server_ip := utils.GetPortAndIP(utils.ServerAddr)  // added server address
+	server_port = uint16(server_port)
 	third_cell := encryption.CreateCell(server_ip, server_port, []byte("Hello World"))
 	third_message := encryption.BuildMessage(third_cell)
 
@@ -183,12 +184,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error while fetching available relays: %v", err)
 	}
-
+	if len(nodes) < 3 {
+		log.Fatalf("Insufficient Relay Nodes available");
+	}
 	chosen_nodes := GetNodesInRoute(nodes)
 
 	clientLogger = utils.NewLogger("logs/client")
 	// Use grpc.Dial to create a connection.
-	conn, err := grpc.Dial(nodes[0].Address, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(nodes[0].Address, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		log.Fatalf("Error while connecting to server: %v\n", err)
 	}

@@ -106,7 +106,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context) uint16 {
 	return cell.CircuitID
 }
 
-func handleRequest(ctx context.Context, req *routingpb.DummyRequest) uint16 {
+func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (uint16, []byte){
 	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
 	decryptedMessage, err := encryption.DecryptECC(req.Message, privateKey)
 	if err != nil {
@@ -121,22 +121,22 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) uint16 {
 	case 1: // create cell
 		fmt.Println("Create cell")
 		circuitID := handleCreateCell(rebuiltCell, ctx)
-		return circuitID
+		return circuitID, rebuiltCell.Payload
 	}
-	return 0
+	return 0, rebuiltCell.Payload
 }
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
-	relayLogger.PrintLog("Request recieved from client: %v", req)
+	relayLogger.PrintLog("Request recieved from previous Node: %v", req)
 
-	circuitID := handleRequest(ctx, req)
+	circuitID, forwardMessage := handleRequest(ctx, req)
 	cinfo, exists := circuitInfoMap[circuitID]
 	if !exists {
 		log.Fatalf("Circuit ID %d not found in circuitInfoMap", circuitID)
 	}
-
-	sendAddr := fmt.Sprintf("%d.%d.%d.%d:%d", 
-		cinfo.ForwardIP[0], cinfo.ForwardIP[1], cinfo.ForwardIP[2], cinfo.ForwardIP[3], cinfo.ForwardPort)
+	// sendAddr := fmt.Sprintf("%d.%d.%d.%d:%d", 
+	// 	cinfo.ForwardIP[0], cinfo.ForwardIP[1], cinfo.ForwardIP[2], cinfo.ForwardIP[3], cinfo.ForwardPort)
+	sendAddr := fmt.Sprintf("localhost:%d", cinfo.ForwardPort)
 	fmt.Println("Send Address: ", sendAddr)
  
 	conn, err := grpc.NewClient(sendAddr, grpc.WithTransportCredentials(relayCredsAsClient))
@@ -144,14 +144,15 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 		log.Fatalf("error while connecting to server: %v\n", err)
 	}
 	defer conn.Close()
-	client := routingpb.NewTestServiceClient(conn)
+	client := routingpb.NewRelayNodeServerClient(conn)
 
-	relayLogger.PrintLog("Request sending to server: %v", req)
-	resp, err := client.TestRPC(context.Background(), req)
+	forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
+	relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
+	resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
 	if err != nil {
 		log.Fatalf("error whiling calling rpc: %v\n", err)
 	}
-	relayLogger.PrintLog("Response received from server: %v", resp)
+	relayLogger.PrintLog("Response received from next Node: %v", resp)
 	return resp, err
 }
 
