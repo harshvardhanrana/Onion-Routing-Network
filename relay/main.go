@@ -144,6 +144,7 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 			log.Fatalf("Circuit ID %d not found in circuitInfoMap", rebuiltCell.CircuitID)
 		}
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
+		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
 		return cinfo, decryptedMessagePayload
 	}
 	return CircuitInfo{}, make([]byte, 0)

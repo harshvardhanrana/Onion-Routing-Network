@@ -17,6 +17,7 @@ import (
 var (
 	clientLogger *utils.Logger
 	nodes        []RelayNode
+	keySeeds = [3][16]byte{}
 )
 
 
@@ -77,29 +78,31 @@ func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]b
 	return encrypted, err
 }
 
-func DecryptResponse(respMessage []byte, keySeed [16]byte) (string){
+func DecryptResponse(respMessage []byte) (string){
 	// to do : change here to use different key2 for different layers based on different keyseed
-	_, key2, _ := encryption.DeriveKeys(keySeed[:])
+	_, key2, _ := encryption.DeriveKeys(keySeeds[0][:])
+	_, key5, _ := encryption.DeriveKeys(keySeeds[1][:])
+	_, key8, _ := encryption.DeriveKeys(keySeeds[2][:])
 	decryptedMessage := encryption.DecryptRC4(respMessage, key2)
-	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key2)
-	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key2)
+	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key5)
+	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key8)
 	return string(decryptedMessage)
 }
 
-func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, keySeed [16]byte)(error) {
+func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16)(error) {
 	// Innermost Layer (node 3)
 
-	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeed, chosen_nodes[2].PubKey, []byte("Create Cell Test"))
+	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeed, chosen_nodes[1].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage)
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeed, chosen_nodes[0].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage)
 	if err != nil {
 		return err
 	}
@@ -112,24 +115,24 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 		return err
 	}
 
-	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply, keySeed))
-	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply, keySeed))
+	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply))
+	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply))
 	return nil
 }
 
-func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, keySeed [16]byte, message string) (error) {
+func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, message string) (error) {
 
-	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeed, chosen_nodes[2].PubKey, []byte(message))
+	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(message))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeed, chosen_nodes[1].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage)
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeed, chosen_nodes[0].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage)
 	if err != nil {
 		return err
 	}
@@ -140,8 +143,8 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	if err != nil {
 		log.Fatalf("error while calling rpc: %v\n", err)
 	}
-	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply, keySeed))
-	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply, keySeed))
+	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply))
+	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply))
 
 	return nil
 }
@@ -193,10 +196,12 @@ func main() {
 
 	client := routingpb.NewRelayNodeServerClient(conn)
 
-	key_seed := make([]byte, 16)
-	rand.Read(key_seed)
+	for i := 0; i < 3; i++ {
+		rand.Read(keySeeds[i][:])
+	}
+
 	circuitID := 1001
 	message := "This is Test Data Message"
-	startCreationRoute(client, chosen_nodes, uint16(circuitID), [16]byte(key_seed))
-	sendRequest(client, chosen_nodes, uint16(circuitID), [16]byte(key_seed), message)
+	startCreationRoute(client, chosen_nodes, uint16(circuitID))
+	sendRequest(client, chosen_nodes, uint16(circuitID), message)
 }
