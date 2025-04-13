@@ -176,7 +176,7 @@ func main() {
 
 	clientLogger = utils.NewLogger("logs/client")
 	// Use grpc.Dial to create a connection.
-	conn, err := grpc.NewClient(nodes[0].Address, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(chosen_nodes[0].Address, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		log.Fatalf("Error while connecting to server: %v\n", err)
 	}
