@@ -7,10 +7,8 @@ import (
 	"log"
 	"time"
 	"encoding/json"
-	"encoding/base64"
-	ecies "github.com/ecies/go/v2"
 	// "google.golang.org/protobuf/proto"
-	
+
 	utils "onion_routing/utils"
 
 	"go.etcd.io/etcd/client/v3"
@@ -38,24 +36,15 @@ func createLease(etcdClient *clientv3.Client)(clientv3.LeaseID, error){
 	return leaseResp.ID, err
 }
 
-func encodePublicKeyToBase64(pub *ecies.PublicKey) (string, error) {
-	return base64.StdEncoding.EncodeToString(pub.Bytes(true)), nil
-}
-
 func registerWithEtcdServer(client *clientv3.Client, leaseID clientv3.LeaseID)(error){
 	key := utils.EtcdKeyPrefix + nodeID
-
-	encodedPubKey, err := encodePublicKeyToBase64(pubKey)
-	if err != nil {
-		log.Fatalf("failed to encode pubkey: %v", err)
-	}
 	relayNode := RelayNode{
 		Address: relayAddr,
-		PubKey:  encodedPubKey,
-		Load:    load,
+		PubKey: pubKey,
+		Load: load,
 	}
 	data, _ := json.Marshal(relayNode)
-	_, err = client.Put(context.Background(), key, string(data), clientv3.WithLease(leaseID))
+	_, err := client.Put(context.Background(), key, string(data), clientv3.WithLease(leaseID))
 	return err
 }
 

@@ -20,6 +20,6 @@ type retrieve struct {
 func GetPortAndIP(address string) (uint16, [4]byte) {
 	parts := strings.Split(address, ":")
 	port, _ := strconv.Atoi(parts[1])
-	ipBytes := [4]byte{192, 168, 1, 1}
+	ipBytes := [4]byte{127, 0, 0, 0}
 	return uint16(port), ipBytes
 }

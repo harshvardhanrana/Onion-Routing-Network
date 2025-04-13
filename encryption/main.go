@@ -71,14 +71,14 @@ func RebuildMessage(data []byte) OnionCell {
 	return cell
 }
 
-func DeriveKeys(seed []byte) (key1, key2, key3 []byte) {
+func DeriveKeys(seed []byte) ([]byte, []byte, []byte) {
 	hash1 := sha256.Sum256(seed)     // First SHA-256 hash
 	hash2 := sha256.Sum256(hash1[:]) // Second SHA-1 hash
 	hash3 := sha256.Sum256(hash2[:]) // Third SHA-1 hash
 
-	key1 = hash1[:8]  // First 8 bytes of first hash for DES
-	key2 = hash2[:16] // First 16 bytes of second hash for RC4
-	key3 = hash3[:16] // First 16 bytes of third hash for AES
+	key1 := hash1[:8]  // First 8 bytes of first hash for DES
+	key2 := hash2[:16] // First 16 bytes of second hash for RC4
+	key3 := hash3[:16] // First 16 bytes of third hash for AES
 
 	return key1, key2, key3
 }
@@ -190,9 +190,7 @@ func EncryptDataClient(data []byte, forward_keys [][]byte) []byte {
 	return data
 }
 
-func CreateCell(ip [4]byte, port uint16, payload []byte) OnionCell {
-	key_seed := make([]byte, 16)
-	rand.Read(key_seed)
+func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySeed [16]byte) OnionCell {
 
 	cell := OnionCell{
 		CellType:   1,          // Create cell
@@ -204,11 +202,34 @@ func CreateCell(ip [4]byte, port uint16, payload []byte) OnionCell {
 		IP:         ip,         // Destination IP
 		Expiration: 1700000000, // Expiration time
 		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
+		KeySeed: keySeed, // Random key seed
+		Payload: payload,            // Payload
+	}
+	return cell
+}
+
+func DataCell(payload []byte, circuitID uint16) OnionCell {
+	key_seed := make([]byte, 16)
+	rand.Read(key_seed)
+	var ip [4]byte = [4]byte{0, 0, 0, 0}
+
+	cell := OnionCell{
+		CellType:   2,          // Create cell
+		CircuitID:  circuitID,       // Example Circuit ID
+		Version:    1,          // Version 1
+		BackF:      1,          // Backward cipher (e.g., DES)
+		ForwF:      2,          // Forward cipher (e.g., RC4)
+		Port:       0,           // random
+		IP:         ip,          // random
+		Expiration: 1700000000, // Expiration time
+		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		KeySeed: [16]byte(key_seed), // Random key seed
 		Payload: payload,            // Payload
 	}
 	return cell
 }
+
+
 
 
 func main() {
@@ -225,7 +246,9 @@ func main() {
 	// 	Payload:    []byte("Hello, Onion!"), // Payload
 	// }
 
-	cell := CreateCell([4]byte{192, 168, 1, 1}, 9002, []byte("Hello, Onion!"))
+	key_seed := make([]byte, 16)
+	rand.Read(key_seed)
+	cell := CreateCell([4]byte{192, 168, 1, 1}, 9002, []byte("Hello, Onion!"), 1001, [16]byte(key_seed))
 
 	message := BuildMessage(cell)
 

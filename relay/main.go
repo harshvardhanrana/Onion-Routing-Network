@@ -13,7 +13,8 @@ import (
 	// "crypto/rsa"
 	"google.golang.org/grpc/peer"
 	// "google.golang.org/protobuf/proto"
-	ecies "github.com/ecies/go/v2"
+	// ecies "github.com/ecies/go/v2"
+	"crypto/rsa"
 	
 	routingpb "onion_routing/protofiles"
 	utils "onion_routing/utils"
@@ -23,13 +24,13 @@ import (
 	// "google.golang.org/grpc/metadata"
 )
 
-const (
-	serverAddr = "localhost:23455"
-)
+// const (
+// 	serverAddr = "localhost:23455"
+// )
 
 type RelayNode struct {
 	Address string `json:"address"`
-	PubKey  string `json:"pub_key"`
+	PubKey *rsa.PublicKey `json:"pub_key"`
 	Load int `json:"load"`
 }
 
@@ -55,6 +56,9 @@ type CircuitInfo struct {
 	BackwardPort uint16
 	Expiration uint32
 	KeySeed [16]byte
+	key1 [8]byte 
+	key2 [16]byte
+	key3 [16]byte
 }
 
 
@@ -66,8 +70,8 @@ var (
 	nodeID string 
 	// pubKey *rsa.PublicKey
 	// privateKey *rsa.PrivateKey
-	privateKey *ecies.PrivateKey
-	pubKey *ecies.PublicKey
+	privateKey *rsa.PrivateKey
+	pubKey *rsa.PublicKey
 	load int
 	circuitInfoMap = make(map[uint16]CircuitInfo)	// map of circuit id to circuit info
 )
@@ -76,7 +80,7 @@ type RelayNodeServer struct {
 	routingpb.UnimplementedRelayNodeServerServer
 }
 
-func handleCreateCell(cell encryption.OnionCell, ctx context.Context) uint16 {
+func handleCreateCell(cell encryption.OnionCell, ctx context.Context) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		log.Println("Could not extract peer from context")
@@ -89,6 +93,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context) uint16 {
 	backIPBytes := cell.IP
 	backPortUint, _ := strconv.Atoi(string(backPort[:]))
 	backPortUint16 := uint16(backPortUint)
+	key1, key2, key3 := encryption.DeriveKeys(cell.KeySeed[:])
 
 	cinfo := CircuitInfo{
 		BackF: cell.BackF,
@@ -99,47 +104,58 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context) uint16 {
 		ForwardPort: cell.Port,
 		BackwardIP: backIPBytes,
 		BackwardPort: backPortUint16,
+		key1: [8]byte(key1),
+		key2: [16]byte(key2),
+		key3: [16]byte(key3),
 	}
 
 	circuitInfoMap[cell.CircuitID] = cinfo
-
-	return cell.CircuitID
 }
 
-func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (uint16, []byte){
+// func decryptMessageHeader(messageHeader []byte, privateKey *rsa.PrivateKey){
+// 	decryptedHeader, err := encryption.DecryptRSA(messageHeader, privateKey)
+// 	return 
+// }
+
+func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (string, []byte){
 	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
-	decryptedMessage, err := encryption.DecryptECC(req.Message, privateKey)
+	encryptedMessageHeader := req.Message[:256]
+	encryptedMessagePayload := req.Message[256:]
+	decryptedMessageHeader, err := encryption.DecryptRSA(encryptedMessageHeader, privateKey)
 	if err != nil {
 		log.Fatalf("Failed to decrypt message: %v", err)
 	}
 
-	fmt.Println("Decrypted message: ")
-	rebuiltCell := encryption.RebuildMessage(decryptedMessage)
-	fmt.Println(rebuiltCell.String())
-	fmt.Println("Size of decrypted message: ", len(decryptedMessage))
+	log.Println("Decrypted message: ")
+	rebuiltCell := encryption.RebuildMessage(decryptedMessageHeader)
+	log.Println(rebuiltCell.String())
+	log.Println("Size of decrypted message: ", len(decryptedMessageHeader))
 	switch rebuiltCell.CellType {
 	case 1: // create cell
-		fmt.Println("Create cell")
-		circuitID := handleCreateCell(rebuiltCell, ctx)
-		return circuitID, rebuiltCell.Payload
+		log.Println("Create cell")
+		handleCreateCell(rebuiltCell, ctx)
+		nextNodeAddr := fmt.Sprintf("localhost:%d",rebuiltCell.Port)
+		return nextNodeAddr, encryptedMessagePayload
+	case 2:
+		log.Println("Data cell")
+		cinfo, exists := circuitInfoMap[rebuiltCell.CircuitID]
+		if !exists {
+			log.Fatalf("Circuit ID %d not found in circuitInfoMap", rebuiltCell.CircuitID)
+		}
+		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
+		nextNodeAddr := fmt.Sprintf("localhost:%d", cinfo.ForwardPort)
+		return nextNodeAddr, decryptedMessagePayload
 	}
-	return 0, rebuiltCell.Payload
+	return "", make([]byte, 0)
 }
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	relayLogger.PrintLog("Request recieved from previous Node: %v", req)
 
-	circuitID, forwardMessage := handleRequest(ctx, req)
-	cinfo, exists := circuitInfoMap[circuitID]
-	if !exists {
-		log.Fatalf("Circuit ID %d not found in circuitInfoMap", circuitID)
-	}
-	// sendAddr := fmt.Sprintf("%d.%d.%d.%d:%d", 
-	// 	cinfo.ForwardIP[0], cinfo.ForwardIP[1], cinfo.ForwardIP[2], cinfo.ForwardIP[3], cinfo.ForwardPort)
-	sendAddr := fmt.Sprintf("localhost:%d", cinfo.ForwardPort)
-	fmt.Println("Send Address: ", sendAddr)
+	nextNodeAddr, forwardMessage := handleRequest(ctx, req)
+	log.Println("Send Address: ", nextNodeAddr)
  
-	conn, err := grpc.NewClient(sendAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
 		log.Fatalf("error while connecting to server: %v\n", err)
 	}
@@ -153,7 +169,7 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 		log.Fatalf("error whiling calling rpc: %v\n", err)
 	}
 	relayLogger.PrintLog("Response received from next Node: %v", resp)
-	return resp, err
+	return resp, nil
 }
 
 func main(){
@@ -171,7 +187,7 @@ func main(){
 	// privateKey, pubKey = genKeyPairs()
 
 	//ECC
-	privateKey, pubKey, _ = genECCKeyPair()
+	privateKey, pubKey = genKeyPairs()
 
 	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
 	// pubKeyBytes := encodePublicKeyToPEM(pubKey) 
