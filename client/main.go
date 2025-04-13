@@ -149,18 +149,6 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	return nil
 }
 
-
-
-// GetNodesInRoute is a helper to pick 3 nodes from the list.
-func GetNodesInRoute(nodes []RelayNode) []RelayNode {
-	chosen_nodes := []RelayNode{}
-	for i := 0; i < 3 && i < len(nodes); i++ {
-		// fmt.Println("IP Address:", nodes[i].Address)
-		chosen_nodes = append(chosen_nodes, nodes[i])
-	}
-	return chosen_nodes
-}
-
 func main() {
 	creds := utils.LoadCredentialsAsClient("certificates/ca.crt",
 		"certificates/client.crt",
