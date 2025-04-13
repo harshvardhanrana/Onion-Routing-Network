@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 	"encoding/json"
+	// "math/rand"
 	// "google.golang.org/protobuf/proto"
 
 	utils "onion_routing/utils"
@@ -54,4 +55,24 @@ func keepAliveThread(client *clientv3.Client, leaseID clientv3.LeaseID) {
 		log.Fatalf("Failed to keep alive: %v", err)
 	}
 	for range ch {}  // to consumed keepalive responses
+}
+
+func GetAvailableRelayNodes(etcdClient *clientv3.Client) ([]RelayNode, error) {
+	nodes := []RelayNode{}
+	resp, err := etcdClient.Get(context.Background(), utils.EtcdKeyPrefix, clientv3.WithPrefix())
+	if err != nil {
+		log.Printf("Failed to fetch relay nodes: %v", err)
+		return nodes, err
+	}
+	for _, ev := range resp.Kvs {
+		var node RelayNode 
+		err := json.Unmarshal(ev.Value, &node)
+		if err != nil {
+			log.Printf("Failed to decode relay node data: %v", err)
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	// log.Printf("Nodes: %v", nodes)
+	return nodes, nil
 }

@@ -8,10 +8,13 @@ import (
 	"net"
 	"os"
 	"fmt"
+	"time"
+	"math/rand"
 	"strconv"
 	"google.golang.org/grpc"
 	// "crypto/rsa"
 	"google.golang.org/grpc/peer"
+	"go.etcd.io/etcd/client/v3"
 	// "google.golang.org/protobuf/proto"
 	// ecies "github.com/ecies/go/v2"
 	"crypto/rsa"
@@ -127,10 +130,10 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		log.Fatalf("Failed to decrypt message: %v", err)
 	}
 
-	log.Println("Decrypted message: ")
+	// log.Println("Decrypted message: ")
 	rebuiltCell := encryption.RebuildMessage(decryptedMessageHeader)
-	log.Println(rebuiltCell.String())
-	log.Println("Size of decrypted message: ", len(decryptedMessageHeader))
+	// log.Println(rebuiltCell.String()) 
+	// log.Println("Size of decrypted message: ", len(decryptedMessageHeader))
 	switch rebuiltCell.CellType {
 	case 1: // create cell
 		log.Println("Create cell")
@@ -146,6 +149,9 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
 		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
 		return cinfo, decryptedMessagePayload
+	case 4:
+		log.Println("Padding cell")
+		break
 	}
 	return CircuitInfo{}, make([]byte, 0)
 }
@@ -161,6 +167,10 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	circuitInfo, forwardMessage := handleRequest(ctx, req)
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	log.Println("Sending to Node with Addr: ", nextNodeAddr)
+
+	if len(forwardMessage) == 0 {
+		return &routingpb.DummyResponse{Reply: []byte("No forward message")}, nil
+	}
  
 	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
@@ -180,6 +190,70 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
 	backwardResp := &routingpb.DummyResponse{Reply: respMessage}
 	return backwardResp, nil
+}
+
+func encryptPaddingMessage(message []byte, pubkey *rsa.PublicKey)([]byte, error){
+	messageHeader := message[:32]
+	messagePayload := message[32:]
+	
+	encryptedHeader, err := encryption.EncryptRSA(messageHeader, pubkey)
+	if err != nil {
+		return make([]byte, 0), err
+	}
+	encryptedMessage := append(encryptedHeader, messagePayload...)
+	
+	return encryptedMessage, nil
+}
+
+func paddingLoopRandom(etcdClient *clientv3.Client, creds credentials.TransportCredentials, selfAddr string) {
+	count := 1
+	for {
+		nodes, err := GetAvailableRelayNodes(etcdClient)
+		if err != nil || len(nodes) == 0 {
+			log.Println("No available nodes for padding.")
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		others := make([]RelayNode, 0)
+		for _, n := range nodes {
+			if n.Address != selfAddr {
+				others = append(others, n)
+			}
+		}
+		if len(others) == 0 {
+			log.Println("Only this relay is registered; skipping padding.")
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		target := others[rand.Intn(len(others))]
+
+		cell := encryption.PaddingCell(count)
+		message := encryption.BuildMessage(cell)
+		encryptedMessage, err := encryptPaddingMessage(message, target.PubKey)
+
+		conn, err := grpc.NewClient(target.Address, grpc.WithTransportCredentials(relayCredsAsClient))
+		if err != nil {
+			log.Printf("Padding failed: could not connect to %s: %v", target.Address, err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		client := routingpb.NewRelayNodeServerClient(conn)
+
+		_, err = client.RelayNodeRPC(context.Background(), &routingpb.DummyRequest{Message: encryptedMessage})
+		if err != nil {
+			log.Printf("Padding failed to %s: %v", target.Address, err)
+		} 
+		// else {
+		// 	log.Printf("Sent padding to: %s", target.Address)
+		// }
+		conn.Close()
+
+		// Wait random delay before next padding
+		time.Sleep(time.Duration(rand.Intn(5000)+5000) * time.Millisecond)
+		count++
+	}
 }
 
 func main(){
@@ -249,6 +323,8 @@ func main(){
 		log.Fatalf("Failed to register with Etcd: %v", err)
 	}
 	go keepAliveThread(etcdClient, leaseId)
+
+	go paddingLoopRandom(etcdClient, relayCredsAsClient, relayAddr)
 	
 	err = server.Serve(listener)
 	if err != nil {

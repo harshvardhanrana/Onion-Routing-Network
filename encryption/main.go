@@ -7,6 +7,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	mathrand "math/rand"
 	"crypto/rc4"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -229,6 +230,28 @@ func DataCell(payload []byte, circuitID uint16) OnionCell {
 	return cell
 }
 
+func PaddingCell(i int) OnionCell {
+	key_seed := make([]byte, 16)
+	rand.Read(key_seed)
+	payload := make([]byte, 10+mathrand.Intn(90))
+	rand.Read(payload)
+	var ip [4]byte = [4]byte{0, 0, 0, 0}
+
+	cell := OnionCell{
+		CellType:   4,          // Create cell
+		CircuitID:  uint16(i),       // Example Circuit ID
+		Version:    1,          // Version 1
+		BackF:      1,          // Backward cipher (e.g., DES)
+		ForwF:      2,          // Forward cipher (e.g., RC4)
+		Port:       0,           // random
+		IP:         ip,          // random
+		Expiration: 1700000000, // Expiration time
+		KeySeed: [16]byte(key_seed), // Random key seed
+		Payload:    payload,
+	}
+	return cell
+}
+
 
 
 
@@ -308,5 +331,9 @@ func main() {
 	// }
 	// fmt.Printf("Encrypted ECC Data: %x\n", encryptedECCData)
 	// fmt.Printf("Decrypted ECC Data: %s\n", decryptedECCData)
+
+	paddingCell := PaddingCell(1)
+	fmt.Printf("Padding Cell:\n")
+	fmt.Println(paddingCell.String())
 
 }
