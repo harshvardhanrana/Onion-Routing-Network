@@ -17,5 +17,5 @@ message DummyRequest {
 }
 
 message DummyResponse {
-    string reply = 1;
+    bytes reply = 1;
 }

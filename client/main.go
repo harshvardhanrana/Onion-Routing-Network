@@ -77,6 +77,15 @@ func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]b
 	return encrypted, err
 }
 
+func DecryptResponse(respMessage []byte, keySeed [16]byte) (string){
+	// to do : change here to use different key2 for different layers based on different keyseed
+	_, key2, _ := encryption.DeriveKeys(keySeed[:])
+	decryptedMessage := encryption.DecryptRC4(respMessage, key2)
+	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key2)
+	decryptedMessage = encryption.DecryptRC4(decryptedMessage, key2)
+	return string(decryptedMessage)
+}
+
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, keySeed [16]byte)(error) {
 	// Innermost Layer (node 3)
 
@@ -95,27 +104,6 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 		return err
 	}
 
-	// // Middle Layer (node 2)
-	// third_port, third_ip := utils.GetPortAndIP(chosen_nodes[2].Address)
-	// second_cell := encryption.CreateCell(third_ip, third_port, encrypted_third_message, circuitID, keySeed)
-	// second_message := encryption.BuildMessage(second_cell)
-	// encrypted_second_message, err := encryption.EncryptECC(second_message, chosen_nodes[1].PubKey)
-	// if err != nil {
-	// 	log.Printf("Error encrypting second message: %v", err)
-	// 	return
-	// }
-
-	// // Outermost Layer (node 1)
-	// second_port, second_ip := utils.GetPortAndIP(chosen_nodes[1].Address)
-	// // first_port, first_ip := getPortAndIP(chosen_nodes[0].Address)
-	// first_cell := encryption.CreateCell(second_ip, second_port, encrypted_second_message, circuitID, keySeed)
-	// first_message := encryption.BuildMessage(first_cell)
-	// encrypted_first_message, err := encryption.EncryptECC(first_message, chosen_nodes[0].PubKey)
-	// if err != nil {
-	// 	log.Printf("Error encrypting first message: %v", err)
-	// 	return
-	// }
-
 	req := &routingpb.DummyRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
@@ -124,8 +112,8 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 		return err
 	}
 
-	clientLogger.PrintLog("Response received from server: %v", resp)
-	log.Printf("Response received from server: %s", resp.Reply)
+	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply, keySeed))
+	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply, keySeed))
 	return nil
 }
 
@@ -145,23 +133,6 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	if err != nil {
 		return err
 	}
-
-	// Innermost Layer (node 3)
-
-	// third_cell := encryption.DataCell([]byte("Hi, This is request from client"), circuitID)
-	// third_message := encryption.BuildMessage(third_cell)
-	// encrypted_third_message := encryption.EncryptRC4(third_message, key1)
-
-	// // Middle Layer (node 2)
-	// second_cell := encryption.DataCell(encrypted_third_message, circuitID)
-	// second_message := encryption.BuildMessage(second_cell)
-	// encrypted_second_message := encryption.EncryptRC4(second_message, key1)
-
-	// // Outermost Layer (node 1)
-	// first_cell := encryption.DataCell(encrypted_second_message, circuitID)
-	// first_message := encryption.BuildMessage(first_cell)
-	// encrypted_first_message := encryption.EncryptRC4(first_message, key1)
-
 	req := &routingpb.DummyRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
@@ -169,9 +140,9 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	if err != nil {
 		log.Fatalf("error while calling rpc: %v\n", err)
 	}
-	clientLogger.PrintLog("Response received from server: %v", resp)
+	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply, keySeed))
+	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply, keySeed))
 
-	log.Printf("Response received from server: %s", resp.Reply)
 	return nil
 }
 

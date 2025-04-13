@@ -27,7 +27,7 @@ type RelayNodeServer struct {
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	serverLogger.PrintLog("Request recieved from previous Node: %v", req)
-	resp := &routingpb.DummyResponse{Reply: "Hello Client, I am Server"}
+	resp := &routingpb.DummyResponse{Reply: []byte("Hello Client, I am Server")}
 	serverLogger.PrintLog("Response received from next Node: %v", resp)
 	return resp, nil
 }
