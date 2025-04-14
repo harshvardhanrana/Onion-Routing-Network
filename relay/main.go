@@ -128,7 +128,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 // 	return 
 // }
 
-func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInfo, []byte){
+func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInfo, []byte, error){
 	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
 	encryptedMessageHeader := req.Message[:256]
 	encryptedMessagePayload := req.Message[256:]
@@ -150,24 +150,23 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
 		circuitInfoMapLock.Unlock()
 
-		return circuitInfo, encryptedMessagePayload
+		return circuitInfo, encryptedMessagePayload, nil
 	case 2:
 		log.Println("Data cell")
 		circuitInfoMapLock.Lock()
 		cinfo, exists := circuitInfoMap[rebuiltCell.CircuitID]
 		if !exists {
-			log.Fatalf("Circuit ID %d not found in circuitInfoMap", rebuiltCell.CircuitID)
+			return CircuitInfo{}, make([]byte, 0), utils.ErrCircuitNotFound
 		}
 		cinfo.ExpTime = time.Now().Add(time.Duration(cinfo.Expiration) * time.Second)
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
 		circuitInfoMapLock.Unlock()
 		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
-		return *cinfo, decryptedMessagePayload
+		return *cinfo, decryptedMessagePayload, nil
 	case 4:
 		log.Println("Padding cell")
-		break
 	}
-	return CircuitInfo{}, make([]byte, 0)
+	return CircuitInfo{}, make([]byte, 0), nil
 }
 
 func handleResponse(circuitInfo CircuitInfo, respMessage []byte) ([]byte){
@@ -178,7 +177,10 @@ func handleResponse(circuitInfo CircuitInfo, respMessage []byte) ([]byte){
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	relayLogger.PrintLog("Request recieved from previous Node: %v", req)
 
-	circuitInfo, forwardMessage := handleRequest(ctx, req)
+	circuitInfo, forwardMessage, err := handleRequest(ctx, req)
+	if err != nil {
+		return &routingpb.DummyResponse{}, err
+	}
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	
 	if len(forwardMessage) == 0 {
@@ -188,7 +190,7 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
  
 	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
-		log.Fatalf("error while connecting to server: %v\n", err)
+		return &routingpb.DummyResponse{}, err
 	}
 	defer conn.Close()
 	client := routingpb.NewRelayNodeServerClient(conn)
@@ -197,7 +199,7 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
 	resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
 	if err != nil {
-		log.Fatalf("error whiling calling rpc: %v\n", err)
+		return &routingpb.DummyResponse{}, err
 	}
 	relayLogger.PrintLog("Response received from next Node: %v", resp)
 	// return resp, nil
