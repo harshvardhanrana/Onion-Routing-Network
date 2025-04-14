@@ -295,13 +295,27 @@ func main(){
 	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
 	// pubKeyBytes := encodePublicKeyToPEM(pubKey) 
 
-	relayCredsAsClient = utils.LoadCredentialsAsClient("certificates/ca.crt", 
-												  "certificates/relay_node.crt",
-												  "certificates/relay_node.key")
+	// relayCredsAsClient = utils.LoadCredentialsAsClient("certificates/ca.crt", 
+	// 											  "certificates/relay_node.crt",
+	// 											  "certificates/relay_node.key")
 
-	relayCredsAsServer = utils.LoadCredentialsAsServer("certificates/ca.crt", 
-												  "certificates/relay_node.crt",
-												  "certificates/relay_node.key")
+	// relayCredsAsServer = utils.LoadCredentialsAsServer("certificates/ca.crt", 
+	// 											  "certificates/relay_node.crt",
+	// 											  "certificates/relay_node.key")
+
+	relayCredsAsClient = credentials.NewTLS(utils.LoadClientTLSConfigWithKeyLog(
+		"certificates/ca.crt", 
+		"certificates/relay_node.crt", 
+		"certificates/relay_node.key",
+	))
+	
+	relayCredsAsServer = credentials.NewTLS(utils.LoadServerTLSConfigWithKeyLog(
+		"certificates/ca.crt", 
+		"certificates/relay_node.crt", 
+		"certificates/relay_node.key",
+	))
+	
+
 
     var err error
 	relayLogger = utils.NewLogger("logs/relay")
