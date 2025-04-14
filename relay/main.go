@@ -18,6 +18,7 @@ import (
 	// "google.golang.org/protobuf/proto"
 	// ecies "github.com/ecies/go/v2"
 	"crypto/rsa"
+	"sync/atomic"
 	
 	routingpb "onion_routing/protofiles"
 	utils "onion_routing/utils"
@@ -34,7 +35,7 @@ import (
 type RelayNode struct {
 	Address string `json:"address"`
 	PubKey *rsa.PublicKey `json:"pub_key"`
-	Load int `json:"load"`
+	Load int32 `json:"load"`
 }
 
 // cell := OnionCell{
@@ -75,7 +76,7 @@ var (
 	// privateKey *rsa.PrivateKey
 	privateKey *rsa.PrivateKey
 	pubKey *rsa.PublicKey
-	load int
+	load int32
 	circuitInfoMap = make(map[uint16]CircuitInfo)	// map of circuit id to circuit info
 )
 
@@ -138,6 +139,7 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 	case 1: // create cell
 		log.Println("Create cell")
 		circuitInfo := handleCreateCell(rebuiltCell, ctx)
+		atomic.AddInt32(&load, 1)
 		circuitInfoMap[rebuiltCell.CircuitID] = circuitInfo
 		return circuitInfo, encryptedMessagePayload
 	case 2:
