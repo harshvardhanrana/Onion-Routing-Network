@@ -4,25 +4,29 @@ import (
 	// "context"
 	// "fmt"
 	"context"
+	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
-	"fmt"
-	"time"
-	"math/rand"
 	"strconv"
+	"sync"
+	"time"
+
 	"google.golang.org/grpc"
+
 	// "crypto/rsa"
-	"google.golang.org/grpc/peer"
 	"go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc/peer"
+
 	// "google.golang.org/protobuf/proto"
 	// ecies "github.com/ecies/go/v2"
 	"crypto/rsa"
 	"sync/atomic"
-	
+
+	encryption "onion_routing/encryption"
 	routingpb "onion_routing/protofiles"
 	utils "onion_routing/utils"
-	encryption "onion_routing/encryption"
 
 	"google.golang.org/grpc/credentials"
 	// "google.golang.org/grpc/metadata"
@@ -59,6 +63,7 @@ type CircuitInfo struct {
 	BackwardIP [4]byte
 	BackwardPort uint16
 	Expiration uint32
+	ExpTime time.Time
 	KeySeed [16]byte
 	key1 [8]byte 
 	key2 [16]byte
@@ -77,7 +82,8 @@ var (
 	privateKey *rsa.PrivateKey
 	pubKey *rsa.PublicKey
 	load int32
-	circuitInfoMap = make(map[uint16]CircuitInfo)	// map of circuit id to circuit info
+	circuitInfoMap = make(map[uint16]*CircuitInfo)	// map of circuit id to circuit info
+	circuitInfoMapLock sync.Mutex
 )
 
 type RelayNodeServer struct {
@@ -103,6 +109,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 		BackF: cell.BackF,
 		ForwF: cell.ForwF,
 		Expiration: cell.Expiration,
+		ExpTime: time.Now().Add(time.Duration(cell.Expiration) * time.Second),
 		KeySeed: cell.KeySeed,
 		ForwardIP: cell.IP,
 		ForwardPort: cell.Port,
@@ -113,7 +120,6 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 		key3: [16]byte(key3),
 	}
 
-	circuitInfoMap[cell.CircuitID] = cinfo
 	return cinfo
 }
 
@@ -138,19 +144,25 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 	switch rebuiltCell.CellType {
 	case 1: // create cell
 		log.Println("Create cell")
+		circuitInfoMapLock.Lock()
 		circuitInfo := handleCreateCell(rebuiltCell, ctx)
 		atomic.AddInt32(&load, 1)
-		circuitInfoMap[rebuiltCell.CircuitID] = circuitInfo
+		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
+		circuitInfoMapLock.Unlock()
+
 		return circuitInfo, encryptedMessagePayload
 	case 2:
 		log.Println("Data cell")
+		circuitInfoMapLock.Lock()
 		cinfo, exists := circuitInfoMap[rebuiltCell.CircuitID]
 		if !exists {
 			log.Fatalf("Circuit ID %d not found in circuitInfoMap", rebuiltCell.CircuitID)
 		}
+		cinfo.ExpTime = time.Now().Add(time.Duration(cinfo.Expiration) * time.Second)
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
+		circuitInfoMapLock.Unlock()
 		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
-		return cinfo, decryptedMessagePayload
+		return *cinfo, decryptedMessagePayload
 	case 4:
 		log.Println("Padding cell")
 		break
@@ -331,6 +343,7 @@ func main(){
 	go keepAliveThread(etcdClient, leaseId)
 
 	go paddingLoopRandom(etcdClient, relayAddr)
+	go checkExpirations()
 	
 	err = server.Serve(listener)
 	if err != nil {

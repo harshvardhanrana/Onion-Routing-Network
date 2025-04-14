@@ -201,7 +201,7 @@ func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySe
 		ForwF:      2,          // Forward cipher (e.g., RC4)
 		Port:       port,       // Port number
 		IP:         ip,         // Destination IP
-		Expiration: 1700000000, // Expiration time
+		Expiration: 5, // Expiration time
 		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		KeySeed: keySeed, // Random key seed
 		Payload: payload,            // Payload
@@ -222,7 +222,7 @@ func DataCell(payload []byte, circuitID uint16) OnionCell {
 		ForwF:      2,          // Forward cipher (e.g., RC4)
 		Port:       0,           // random
 		IP:         ip,          // random
-		Expiration: 1700000000, // Expiration time
+		Expiration: 5, // Expiration time
 		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		KeySeed: [16]byte(key_seed), // Random key seed
 		Payload: payload,            // Payload
@@ -245,7 +245,7 @@ func PaddingCell(i int) OnionCell {
 		ForwF:      2,          // Forward cipher (e.g., RC4)
 		Port:       0,           // random
 		IP:         ip,          // random
-		Expiration: 1700000000, // Expiration time
+		Expiration: 5, // Expiration time
 		KeySeed: [16]byte(key_seed), // Random key seed
 		Payload:    payload,
 	}
