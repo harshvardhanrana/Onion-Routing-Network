@@ -166,11 +166,11 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 
 	circuitInfo, forwardMessage := handleRequest(ctx, req)
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
-	log.Println("Sending to Node with Addr: ", nextNodeAddr)
-
+	
 	if len(forwardMessage) == 0 {
 		return &routingpb.DummyResponse{Reply: []byte("No forward message")}, nil
 	}
+	log.Println("Sending to Node with Addr: ", nextNodeAddr)
  
 	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
@@ -205,13 +205,15 @@ func encryptPaddingMessage(message []byte, pubkey *rsa.PublicKey)([]byte, error)
 	return encryptedMessage, nil
 }
 
-func paddingLoopRandom(etcdClient *clientv3.Client, creds credentials.TransportCredentials, selfAddr string) {
+func paddingLoopRandom(etcdClient *clientv3.Client, selfAddr string) {
 	count := 1
 	for {
+		// time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(rand.Intn(10000)+15000) * time.Millisecond)
+		// time.Sleep(time.Duration(10000) * time.Millisecond)
 		nodes, err := GetAvailableRelayNodes(etcdClient)
 		if err != nil || len(nodes) == 0 {
 			log.Println("No available nodes for padding.")
-			time.Sleep(2 * time.Second)
 			continue
 		}
 
@@ -241,18 +243,20 @@ func paddingLoopRandom(etcdClient *clientv3.Client, creds credentials.TransportC
 		}
 		client := routingpb.NewRelayNodeServerClient(conn)
 
-		_, err = client.RelayNodeRPC(context.Background(), &routingpb.DummyRequest{Message: encryptedMessage})
+		fmt.Println("Size of encrypted message: ", len(encryptedMessage))
+
+		resp, err := client.RelayNodeRPC(context.Background(), &routingpb.DummyRequest{Message: encryptedMessage})
 		if err != nil {
 			log.Printf("Padding failed to %s: %v", target.Address, err)
 		} 
+		fmt.Printf("Padding sent to %s: %s\n", target.Address, resp.Reply)
 		// else {
 		// 	log.Printf("Sent padding to: %s", target.Address)
 		// }
 		conn.Close()
 
-		// Wait random delay before next padding
-		time.Sleep(time.Duration(rand.Intn(5000)+5000) * time.Millisecond)
-		count++
+
+		// count++
 	}
 }
 
@@ -324,7 +328,7 @@ func main(){
 	}
 	go keepAliveThread(etcdClient, leaseId)
 
-	go paddingLoopRandom(etcdClient, relayCredsAsClient, relayAddr)
+	go paddingLoopRandom(etcdClient, relayAddr)
 	
 	err = server.Serve(listener)
 	if err != nil {
