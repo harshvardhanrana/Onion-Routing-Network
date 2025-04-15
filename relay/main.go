@@ -144,7 +144,7 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 	// log.Println(rebuiltCell.String()) 
 	// log.Println("Size of decrypted message: ", len(decryptedMessageHeader))
 	switch rebuiltCell.CellType {
-	case 1: // create cell
+	case byte(encryption.CREATE_CELL): // create cell
 		log.Println("Create cell")
 		circuitInfoMapLock.Lock()
 		circuitInfo := handleCreateCell(rebuiltCell, ctx)
@@ -153,7 +153,7 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		circuitInfoMapLock.Unlock()
 
 		return circuitInfo, encryptedMessagePayload, nil
-	case 2:
+	case byte(encryption.DATA_CELL):
 		log.Println("Data cell")
 		circuitInfoMapLock.Lock()
 		cinfo, exists := circuitInfoMap[rebuiltCell.CircuitID]
@@ -163,18 +163,8 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		cinfo.ExpTime = time.Now().Add(time.Duration(cinfo.Expiration) * time.Second)
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
 		circuitInfoMapLock.Unlock()
-		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
 		return *cinfo, decryptedMessagePayload, nil
-	// case 3:
-	// 	log.Println("Exit Node Creation")
-	// 	circuitInfoMapLock.Lock()
-	// 	circuitInfo := handleCreateCell(rebuiltCell, ctx)
-	// 	atomic.AddInt32(&load, 1)
-	// 	circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
-	// 	circuitInfo.IsExitNode = true
-	// 	circuitInfoMapLock.Unlock()
-	// 	return circuitInfo, make([]byte, 0), nil
-	case 4:
+	case byte(encryption.PADDING_CELL):
 		log.Println("Padding cell")
 	}
 	return CircuitInfo{}, make([]byte, 0), nil
@@ -183,6 +173,44 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 func handleResponse(circuitInfo CircuitInfo, respMessage []byte) ([]byte){
 	encryptedRespMessage := encryption.EncryptRC4(respMessage, circuitInfo.key2[:])
 	return encryptedRespMessage
+}
+
+func sendRequestToServer(serverAddr string, req *routingpb.DummyRequest)(*routingpb.DummyResponse, error){
+	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+	if err != nil {
+		log.Println("Received Error:", err)
+		return &routingpb.DummyResponse{}, err
+	}
+	defer conn.Close()
+	client := routingpb.NewTestServiceClient(conn)
+
+	relayLogger.PrintLog("Request sending to next Node: %v", req)
+	resp, err := client.TestRPC(context.Background(), req)
+	if err != nil {
+		log.Println("Received Error:", err, "from IP", req)
+		return &routingpb.DummyResponse{}, err
+	}
+	relayLogger.PrintLog("Response received from next Node: %v", resp)
+	return resp, nil
+}
+
+func sendRequestToRelayNode(nodeAddr string, req *routingpb.DummyRequest)(*routingpb.DummyResponse, error){
+	conn, err := grpc.NewClient(nodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+	if err != nil {
+		log.Println("Received Error:", err)
+		return &routingpb.DummyResponse{}, err
+	}
+	defer conn.Close()
+	client := routingpb.NewRelayNodeServerClient(conn)
+
+	relayLogger.PrintLog("Request sending to next Node: %v", req)
+	resp, err := client.RelayNodeRPC(context.Background(), req)
+	if err != nil {
+		log.Println("Received Error:", err)
+		return &routingpb.DummyResponse{}, err
+	}
+	relayLogger.PrintLog("Response received from next Node: %v", resp)
+	return resp, nil
 }
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
@@ -194,52 +222,62 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	}
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	
-	if len(forwardMessage) == 0 {
-		// fmt.Println("Exit Nodes")
+	if len(forwardMessage) == 0 {  // handling padding cell + exitNode node in route-creation
 		return &routingpb.DummyResponse{Reply: []byte("Exit Node Reached")}, nil
 	}
 	log.Println("Sending to Node with Addr: ", nextNodeAddr)
  
+	forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
 	if circuitInfo.IsExitNode {
-		conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
-		if err != nil {
-			log.Println("Received Error:", err)
-			return &routingpb.DummyResponse{}, err
-		}
-		defer conn.Close()
-		client := routingpb.NewTestServiceClient(conn)
 
-		forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
-		relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
-		resp, err := client.TestRPC(context.Background(), forwardReq)
+		// conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+		// if err != nil {
+		// 	log.Println("Received Error:", err)
+		// 	return &routingpb.DummyResponse{}, err
+		// }
+		// defer conn.Close()
+		// client := routingpb.NewTestServiceClient(conn)
+
+		// relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
+		// resp, err := client.TestRPC(context.Background(), forwardReq)
+		// if err != nil {
+		// 	log.Println("Received Error:", err, "from IP", nextNodeAddr)
+		// 	return &routingpb.DummyResponse{}, err
+		// }
+		// relayLogger.PrintLog("Response received from next Node: %v", resp)
+		// return resp, nil
+
+		resp, err := sendRequestToServer(nextNodeAddr, forwardReq)
 		if err != nil {
-			log.Println("Received Error:", err, "from IP", nextNodeAddr)
 			return &routingpb.DummyResponse{}, err
 		}
-		relayLogger.PrintLog("Response received from next Node: %v", resp)
-		// return resp, nil
 		respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
 		backwardResp := &routingpb.DummyResponse{Reply: respMessage}
 		return backwardResp, nil
 	}
 
-	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
-	if err != nil {
-		log.Println("Received Error:", err)
-		return &routingpb.DummyResponse{}, err
-	}
-	defer conn.Close()
-	client := routingpb.NewRelayNodeServerClient(conn)
+	// conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+	// if err != nil {
+	// 	log.Println("Received Error:", err)
+	// 	return &routingpb.DummyResponse{}, err
+	// }
+	// defer conn.Close()
+	// client := routingpb.NewRelayNodeServerClient(conn)
 
-	forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
-	relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
-	resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
+	// forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
+	// relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
+	// resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
+	// if err != nil {
+	// 	log.Println("Received Error:", err)
+	// 	return &routingpb.DummyResponse{}, err
+	// }
+	// relayLogger.PrintLog("Response received from next Node: %v", resp)
+	// return resp, nil
+
+	resp, err := sendRequestToRelayNode(nextNodeAddr, forwardReq)
 	if err != nil {
-		log.Println("Received Error:", err)
 		return &routingpb.DummyResponse{}, err
 	}
-	relayLogger.PrintLog("Response received from next Node: %v", resp)
-	// return resp, nil
 	respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
 	backwardResp := &routingpb.DummyResponse{Reply: respMessage}
 	return backwardResp, nil

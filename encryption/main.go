@@ -17,6 +17,14 @@ import (
 
 const PAYLOADSIZE = 1024
 
+type CellType byte
+
+var (
+	CREATE_CELL	= 0 
+	DATA_CELL = 1
+	PADDING_CELL = 2
+)
+
 type OnionCell struct {
 	CellType   byte     // 1 byte (0 = Padding, 1 = Create, 2 = Data, 3 = Destroy)
 	CircuitID  uint16   // 2 bytes (Circuit ID)
@@ -194,7 +202,7 @@ func EncryptDataClient(data []byte, forward_keys [][]byte) []byte {
 func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySeed [16]byte, isExitNode byte) OnionCell {
 
 	cell := OnionCell{
-		CellType:   1,          // Create cell
+		CellType:   byte(CREATE_CELL),          // Create cell
 		CircuitID:  1001,       // Example Circuit ID
 		IsExitNode: isExitNode,          // Version 1
 		BackF:      1,          // Backward cipher (e.g., DES)
@@ -202,7 +210,6 @@ func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySe
 		Port:       port,       // Port number
 		IP:         ip,         // Destination IP
 		Expiration: 5, // Expiration time
-		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		KeySeed: keySeed, // Random key seed
 		Payload: payload,            // Payload
 	}
@@ -215,7 +222,7 @@ func DataCell(payload []byte, circuitID uint16, isExitNode byte) OnionCell {
 	var ip [4]byte = [4]byte{0, 0, 0, 0}
 
 	cell := OnionCell{
-		CellType:   2,          // Create cell
+		CellType:   byte(DATA_CELL),          // Create cell
 		CircuitID:  circuitID,       // Example Circuit ID
 		IsExitNode: isExitNode,          // Version 1
 		BackF:      1,          // Backward cipher (e.g., DES)
@@ -223,7 +230,6 @@ func DataCell(payload []byte, circuitID uint16, isExitNode byte) OnionCell {
 		Port:       0,           // random
 		IP:         ip,          // random
 		Expiration: 5, // Expiration time
-		// KeySeed:    [16]byte{'1', '6', 'B', 'y', 't', 'e', 's', 'K', 'e', 'y', 'S', 'e', 'e', 'd', '!'},
 		KeySeed: [16]byte(key_seed), // Random key seed
 		Payload: payload,            // Payload
 	}
@@ -238,7 +244,7 @@ func PaddingCell(i int) OnionCell {
 	var ip [4]byte = [4]byte{0, 0, 0, 0}
 
 	cell := OnionCell{
-		CellType:   4,          // Create cell
+		CellType:   byte(PADDING_CELL),          // Create cell
 		CircuitID:  uint16(i),       // Example Circuit ID
 		IsExitNode: 0,          // Version 1
 		BackF:      1,          // Backward cipher (e.g., DES)
