@@ -203,7 +203,7 @@ func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySe
 
 	cell := OnionCell{
 		CellType:   byte(CREATE_CELL),         
-		CircuitID:  1001,       
+		CircuitID:  circuitID,       
 		IsExitNode: isExitNode,         
 		RequestType:     1,          
 		BackEncryption:  2,         

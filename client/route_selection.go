@@ -1,6 +1,7 @@
 package main
 
-import  (
+import (
+	"log"
 	"math/rand"
 )
 
@@ -40,6 +41,6 @@ func GetNodesInRoute(nodes []RelayNode) []RelayNode {
 
 		candidateNodes = append(candidateNodes[:selectedIndex], candidateNodes[selectedIndex+1:]...)
 	}
-
+	log.Println("Nodes picked:", chosenNodes)
 	return chosenNodes
 }

@@ -17,6 +17,7 @@ SERVER_FILES = $(wildcard $(SERVER_DIR)/*.go)
 DIRECTORY_SERVER_FILES = $(wildcard $(DIRECTORY_SERVER_DIR)/*.go)
 
 RELAY_NODE_ID ?= 1
+CLIENT_ID ?= 1001
 
 .PHONY: proto relay client server directory
 
@@ -30,7 +31,7 @@ relay:
 	go run $(RELAY_NODE_FILES) $(RELAY_NODE_ID)
 
 client:
-	go run $(CLIENT_FILES)
+	go run $(CLIENT_FILES) -id $(CLIENT_ID)
 
 server:
 	go run $(SERVER_FILES)

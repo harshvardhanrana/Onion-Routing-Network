@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -95,12 +96,15 @@ func (s *OnionRoutingServer) GetRandomNumbers(ctx context.Context, req *routingp
 }
 
 func main() {
+	serverAddr := flag.Int("port", 45034, "port number")
+	flag.Parse()
+	realAddr := fmt.Sprintf("localhost:%v", *serverAddr)
 	creds := utils.LoadCredentialsAsServer("certificates/ca.crt", 
 										"certificates/server.crt", 
 										"certificates/server.key")	
 
 	serverLogger = utils.NewLogger("logs/server")
-	listener, err := net.Listen("tcp", utils.ServerAddr)
+	listener, err := net.Listen("tcp", realAddr)
 	if err != nil {
 		log.Fatalf("server failed to listen: %v", err)
 	}

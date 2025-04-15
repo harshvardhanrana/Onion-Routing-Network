@@ -150,6 +150,7 @@ func handleRequest(ctx context.Context, req *routingpb.RelayRequest) (CircuitInf
 		defer circuitInfoMapLock.Unlock()
 		circuitInfo := handleCreateCell(rebuiltCell, ctx)
 		atomic.AddInt32(&load, 1)
+		log.Println("Creating", rebuiltCell.CircuitID)
 		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
 		log.Println("Create Cell Done-Debug Message")
 		return circuitInfo, encryptedMessagePayload, nil
@@ -407,6 +408,7 @@ func main(){
 		log.Fatalf("Failed to register with Etcd: %v", err)
 	}
 	go keepAliveThread(etcdClient, leaseId)
+	go periodicUpdateThread(etcdClient, leaseId)
 
 	go paddingLoopRandom(etcdClient, relayAddr)
 	go checkExpirations()

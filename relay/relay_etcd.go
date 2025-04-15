@@ -4,16 +4,17 @@ import (
 	// "context"
 	// "fmt"
 	"context"
-	"log"
-	"time"
 	"encoding/json"
+	"log"
+	"sync/atomic"
+	"time"
+
 	// "math/rand"
 	// "google.golang.org/protobuf/proto"
 
 	utils "onion_routing/utils"
 
 	"go.etcd.io/etcd/client/v3"
-
 	// "google.golang.org/grpc/metadata"
 )
 
@@ -42,11 +43,18 @@ func registerWithEtcdServer(client *clientv3.Client, leaseID clientv3.LeaseID)(e
 	relayNode := RelayNode{
 		Address: relayAddr,
 		PubKey: pubKey,
-		Load: load,
+		Load: atomic.LoadInt32(&load),
 	}
 	data, _ := json.Marshal(relayNode)
 	_, err := client.Put(context.Background(), key, string(data), clientv3.WithLease(leaseID))
 	return err
+}
+
+func periodicUpdateThread(client *clientv3.Client, leaseID clientv3.LeaseID) {
+	for {
+		registerWithEtcdServer(client, leaseID)
+		time.Sleep(3*time.Second)
+	}
 }
 
 func keepAliveThread(client *clientv3.Client, leaseID clientv3.LeaseID) {

@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 
-	// "fmt"
 	"log"
 	"time"
 
@@ -131,6 +131,7 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 	}
 
 	clientLogger.PrintLog("Connected using Onion-Routing")
+	clientLogger.PrintLog("Request-Response time: %v", duration)
 	log.Printf("Connected to TOR Server")
 	log.Printf("Request-Response time: %v", duration)
 	return nil
@@ -158,9 +159,11 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	resp, err := client.RelayNodeRPC(context.Background(), req)
 	duration := time.Since(start)
 	if err != nil {
+		log.Println("Error:", err)
 		return err
 	}
 	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply))
+	clientLogger.PrintLog("Request-Response time: %v", duration)
 	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply))
 	log.Printf("Request-Response time: %v", duration)
 
@@ -168,6 +171,8 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 }
 
 func main() {
+	circuitIDFlag := flag.Int("id", 1001, "circuit id for the client")
+	flag.Parse()
 	creds := utils.LoadCredentialsAsClient("certificates/ca.crt",
 		"certificates/client.crt",
 		"certificates/client.key")
@@ -201,7 +206,7 @@ func main() {
 
 	client := routingpb.NewRelayNodeServerClient(conn)
 
-	circuitID := 1000
+	circuitID := *circuitIDFlag
 	err = startCreationRoute(client, choosen_nodes, uint16(circuitID))
 	if err != nil {
 		log.Fatalf("Failed to Create Route: %v", err)
