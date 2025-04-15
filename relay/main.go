@@ -116,7 +116,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 		ForwardPort: cell.Port,
 		BackwardIP: backIPBytes,
 		BackwardPort: backPortUint16,
-		IsExitNode: true,
+		IsExitNode: (cell.IsExitNode != 0),  // converting byte to bool
 		key1: [8]byte(key1),
 		key2: [16]byte(key2),
 		key3: [16]byte(key3),
@@ -165,16 +165,15 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		circuitInfoMapLock.Unlock()
 		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
 		return *cinfo, decryptedMessagePayload, nil
-	case 3:
-		log.Println("Exit Node Creation")
-		circuitInfoMapLock.Lock()
-		circuitInfo := handleCreateCell(rebuiltCell, ctx)
-		circuitInfo.IsExitNode = true
-		atomic.AddInt32(&load, 1)
-		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
-		circuitInfoMapLock.Unlock()
-
-		return circuitInfo, make([]byte, 0), nil
+	// case 3:
+	// 	log.Println("Exit Node Creation")
+	// 	circuitInfoMapLock.Lock()
+	// 	circuitInfo := handleCreateCell(rebuiltCell, ctx)
+	// 	atomic.AddInt32(&load, 1)
+	// 	circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
+	// 	circuitInfo.IsExitNode = true
+	// 	circuitInfoMapLock.Unlock()
+	// 	return circuitInfo, make([]byte, 0), nil
 	case 4:
 		log.Println("Padding cell")
 	}
@@ -196,7 +195,7 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	
 	if len(forwardMessage) == 0 {
-		fmt.Println("Exit Nodes")
+		// fmt.Println("Exit Nodes")
 		return &routingpb.DummyResponse{Reply: []byte("Exit Node Reached")}, nil
 	}
 	log.Println("Sending to Node with Addr: ", nextNodeAddr)
@@ -396,7 +395,7 @@ func main(){
 	}
 	go keepAliveThread(etcdClient, leaseId)
 
-	// go paddingLoopRandom(etcdClient, relayAddr)
+	go paddingLoopRandom(etcdClient, relayAddr)
 	go checkExpirations()
 	
 	err = server.Serve(listener)

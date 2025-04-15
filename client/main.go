@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	// "fmt"
 	"log"
 	"time"
 
@@ -59,18 +59,18 @@ func encryptDataMessage(message []byte, pubkey *rsa.PublicKey, keySeed [16]byte)
 	return encryptedMessage, nil
 }
 
-func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]byte, pubkey *rsa.PublicKey, payload []byte)([]byte, error){
+func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]byte, pubkey *rsa.PublicKey, payload []byte, isExitNode byte)([]byte, error){
 	server_port, server_ip := utils.GetPortAndIP(serverAddr)  // added server address
 	var err error
 	var encrypted []byte
 	
 	switch cellType {
 	case 1:
-		cell := encryption.CreateCell(server_ip, server_port, payload, circuitID, keySeed)
+		cell := encryption.CreateCell(server_ip, server_port, payload, circuitID, keySeed, isExitNode)
 		message := encryption.BuildMessage(cell)
 		encrypted, err = encryptCreateMessage(message, pubkey)
 	case 2:
-		cell := encryption.DataCell(payload, circuitID)
+		cell := encryption.DataCell(payload, circuitID, isExitNode)
 		message := encryption.BuildMessage(cell)
 		encrypted, err = encryptDataMessage(message, pubkey, keySeed)
 	}
@@ -95,17 +95,17 @@ func DecryptResponse(respMessage []byte) (string){
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16)(error) {
 	// Innermost Layer (node 3)
 
-	encryptedMessage, err := buildLayer(3, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"))
+	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"), byte(1))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0))
 	if err != nil {
 		return err
 	}
@@ -129,17 +129,17 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 
 func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, message string) (error) {
 
-	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(message))
+	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(message), byte(1))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage)
+	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0))
 	if err != nil {
 		return err
 	}
