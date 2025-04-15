@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,6 +13,7 @@ func checkExpirations() {
 			if time.Now().Compare(v.ExpTime) == 1 {
 				log.Println("Deleted Circuit with ID:", k)
 				delete(circuitInfoMap, k)
+				atomic.AddInt32(&load, -1)
 			}
 		}
 		circuitInfoMapLock.Unlock()

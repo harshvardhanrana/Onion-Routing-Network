@@ -64,6 +64,7 @@ type CircuitInfo struct {
 	BackwardPort uint16
 	Expiration uint32
 	ExpTime time.Time
+	IsExitNode bool
 	KeySeed [16]byte
 	key1 [8]byte 
 	key2 [16]byte
@@ -115,6 +116,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 		ForwardPort: cell.Port,
 		BackwardIP: backIPBytes,
 		BackwardPort: backPortUint16,
+		IsExitNode: true,
 		key1: [8]byte(key1),
 		key2: [16]byte(key2),
 		key3: [16]byte(key3),
@@ -163,6 +165,16 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 		circuitInfoMapLock.Unlock()
 		// log.Println("Decrypted message payload: ", string(decryptedMessagePayload))
 		return *cinfo, decryptedMessagePayload, nil
+	case 3:
+		log.Println("Exit Node Creation")
+		circuitInfoMapLock.Lock()
+		circuitInfo := handleCreateCell(rebuiltCell, ctx)
+		circuitInfo.IsExitNode = true
+		atomic.AddInt32(&load, 1)
+		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
+		circuitInfoMapLock.Unlock()
+
+		return circuitInfo, make([]byte, 0), nil
 	case 4:
 		log.Println("Padding cell")
 	}
@@ -172,7 +184,7 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 func handleResponse(circuitInfo CircuitInfo, respMessage []byte) ([]byte){
 	encryptedRespMessage := encryption.EncryptRC4(respMessage, circuitInfo.key2[:])
 	return encryptedRespMessage
-}	
+}
 
 func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
 	relayLogger.PrintLog("Request recieved from previous Node: %v", req)
@@ -184,12 +196,37 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	
 	if len(forwardMessage) == 0 {
-		return &routingpb.DummyResponse{Reply: []byte("No forward message")}, nil
+		fmt.Println("Exit Nodes")
+		return &routingpb.DummyResponse{Reply: []byte("Exit Node Reached")}, nil
 	}
 	log.Println("Sending to Node with Addr: ", nextNodeAddr)
  
+	if circuitInfo.IsExitNode {
+		conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
+		if err != nil {
+			log.Println("Received Error:", err)
+			return &routingpb.DummyResponse{}, err
+		}
+		defer conn.Close()
+		client := routingpb.NewTestServiceClient(conn)
+
+		forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
+		relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
+		resp, err := client.TestRPC(context.Background(), forwardReq)
+		if err != nil {
+			log.Println("Received Error:", err, "from IP", nextNodeAddr)
+			return &routingpb.DummyResponse{}, err
+		}
+		relayLogger.PrintLog("Response received from next Node: %v", resp)
+		// return resp, nil
+		respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
+		backwardResp := &routingpb.DummyResponse{Reply: respMessage}
+		return backwardResp, nil
+	}
+
 	conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
+		log.Println("Received Error:", err)
 		return &routingpb.DummyResponse{}, err
 	}
 	defer conn.Close()
@@ -199,6 +236,7 @@ func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.Dummy
 	relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
 	resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
 	if err != nil {
+		log.Println("Received Error:", err)
 		return &routingpb.DummyResponse{}, err
 	}
 	relayLogger.PrintLog("Response received from next Node: %v", resp)
@@ -249,7 +287,7 @@ func paddingLoopRandom(etcdClient *clientv3.Client, selfAddr string) {
 
 		cell := encryption.PaddingCell(count)
 		message := encryption.BuildMessage(cell)
-		encryptedMessage, err := encryptPaddingMessage(message, target.PubKey)
+		encryptedMessage, _ := encryptPaddingMessage(message, target.PubKey)
 
 		conn, err := grpc.NewClient(target.Address, grpc.WithTransportCredentials(relayCredsAsClient))
 		if err != nil {
@@ -358,7 +396,7 @@ func main(){
 	}
 	go keepAliveThread(etcdClient, leaseId)
 
-	go paddingLoopRandom(etcdClient, relayAddr)
+	// go paddingLoopRandom(etcdClient, relayAddr)
 	go checkExpirations()
 	
 	err = server.Serve(listener)

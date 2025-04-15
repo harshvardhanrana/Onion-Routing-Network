@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"time"
 
 	encryption "onion_routing/encryption"
 	routingpb "onion_routing/protofiles"
@@ -18,6 +20,7 @@ var (
 	clientLogger *utils.Logger
 	nodes        []RelayNode
 	keySeeds = [3][16]byte{}
+	connected = 0
 )
 
 
@@ -92,7 +95,7 @@ func DecryptResponse(respMessage []byte) (string){
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16)(error) {
 	// Innermost Layer (node 3)
 
-	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"))
+	encryptedMessage, err := buildLayer(3, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"))
 	if err != nil {
 		return err
 	}
@@ -110,13 +113,17 @@ func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []R
 	req := &routingpb.DummyRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
-	resp, err := client.RelayNodeRPC(context.Background(), req)
+	start := time.Now()
+	_, err = client.RelayNodeRPC(context.Background(), req)
+	duration := time.Since(start)
 	if err != nil {
+		log.Fatalf("Error: %v", err)
 		return err
 	}
 
-	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply))
-	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply))
+	clientLogger.PrintLog("Connected to TOR Server")
+	log.Printf("Connected to TOR Server")
+	log.Printf("Request-Response time: %v", duration)
 	return nil
 }
 
@@ -139,12 +146,15 @@ func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNod
 	req := &routingpb.DummyRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
+	start := time.Now()
 	resp, err := client.RelayNodeRPC(context.Background(), req)
+	duration := time.Since(start)
 	if err != nil {
-		log.Fatalf("error while calling rpc: %v\n", err)
+		return err
 	}
 	clientLogger.PrintLog("Response received from server(Decrypted): %v", DecryptResponse(resp.Reply))
 	log.Printf("Response received from server(Decrypted): %s", DecryptResponse(resp.Reply))
+	log.Printf("Request-Response time: %v", duration)
 
 	return nil
 }
@@ -192,4 +202,7 @@ func main() {
 	message := "This is Test Data Message"
 	startCreationRoute(client, chosen_nodes, uint16(circuitID))
 	sendRequest(client, chosen_nodes, uint16(circuitID), message)
+	// for _ = range 10 {
+	// 	sendRequest(client, chosen_nodes, uint16(circuitID), message)
+	// }
 }
