@@ -4,20 +4,44 @@ package onion_routing;
 
 option go_package = "DS-Project-Onion-Routing/protofiles";
 
-service TestService {
-    rpc TestRPC (DummyRequest) returns (DummyResponse);
-    rpc Test1RPC (DummyRequest) returns (DummyResponse);
-    rpc Test2RPC (DummyRequest) returns (DummyResponse);
+service OnionRoutingServer {
+    rpc GreetServer (GreetRequest) returns (GreetResponse);
+    rpc CalculateFibonacci (FibonacciRequest) returns (FibonacciResponse);
+    rpc GetRandomNumbers (GetRandomRequest) returns (GetRandomResponse);
 }
 
 service RelayNodeServer {
-    rpc RelayNodeRPC(DummyRequest) returns (DummyResponse);
+    rpc RelayNodeRPC(RelayRequest) returns (RelayResponse);
 }
 
-message DummyRequest {
+message GreetRequest {
     bytes message = 1;
 }
 
-message DummyResponse {
+message GreetResponse {
+    bytes reply = 1;
+}
+
+message FibonacciRequest {
+    bytes n = 1;
+}
+
+message FibonacciResponse {
+    bytes reply = 1;
+}
+
+message GetRandomRequest {
+    bytes n = 1;
+}
+
+message GetRandomResponse {
+    bytes reply = 1;
+}
+
+message RelayRequest {
+    bytes message = 1;
+}
+
+message RelayResponse {
     bytes reply = 1;
 }

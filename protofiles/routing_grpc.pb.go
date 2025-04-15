@@ -19,177 +19,177 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TestService_TestRPC_FullMethodName  = "/onion_routing.TestService/TestRPC"
-	TestService_Test1RPC_FullMethodName = "/onion_routing.TestService/Test1RPC"
-	TestService_Test2RPC_FullMethodName = "/onion_routing.TestService/Test2RPC"
+	OnionRoutingServer_GreetServer_FullMethodName        = "/onion_routing.OnionRoutingServer/GreetServer"
+	OnionRoutingServer_CalculateFibonacci_FullMethodName = "/onion_routing.OnionRoutingServer/CalculateFibonacci"
+	OnionRoutingServer_GetRandomNumbers_FullMethodName   = "/onion_routing.OnionRoutingServer/GetRandomNumbers"
 )
 
-// TestServiceClient is the client API for TestService service.
+// OnionRoutingServerClient is the client API for OnionRoutingServer service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type TestServiceClient interface {
-	TestRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
-	Test1RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
-	Test2RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
+type OnionRoutingServerClient interface {
+	GreetServer(ctx context.Context, in *GreetRequest, opts ...grpc.CallOption) (*GreetResponse, error)
+	CalculateFibonacci(ctx context.Context, in *FibonacciRequest, opts ...grpc.CallOption) (*FibonacciResponse, error)
+	GetRandomNumbers(ctx context.Context, in *GetRandomRequest, opts ...grpc.CallOption) (*GetRandomResponse, error)
 }
 
-type testServiceClient struct {
+type onionRoutingServerClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewTestServiceClient(cc grpc.ClientConnInterface) TestServiceClient {
-	return &testServiceClient{cc}
+func NewOnionRoutingServerClient(cc grpc.ClientConnInterface) OnionRoutingServerClient {
+	return &onionRoutingServerClient{cc}
 }
 
-func (c *testServiceClient) TestRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+func (c *onionRoutingServerClient) GreetServer(ctx context.Context, in *GreetRequest, opts ...grpc.CallOption) (*GreetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DummyResponse)
-	err := c.cc.Invoke(ctx, TestService_TestRPC_FullMethodName, in, out, cOpts...)
+	out := new(GreetResponse)
+	err := c.cc.Invoke(ctx, OnionRoutingServer_GreetServer_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *testServiceClient) Test1RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+func (c *onionRoutingServerClient) CalculateFibonacci(ctx context.Context, in *FibonacciRequest, opts ...grpc.CallOption) (*FibonacciResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DummyResponse)
-	err := c.cc.Invoke(ctx, TestService_Test1RPC_FullMethodName, in, out, cOpts...)
+	out := new(FibonacciResponse)
+	err := c.cc.Invoke(ctx, OnionRoutingServer_CalculateFibonacci_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *testServiceClient) Test2RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+func (c *onionRoutingServerClient) GetRandomNumbers(ctx context.Context, in *GetRandomRequest, opts ...grpc.CallOption) (*GetRandomResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DummyResponse)
-	err := c.cc.Invoke(ctx, TestService_Test2RPC_FullMethodName, in, out, cOpts...)
+	out := new(GetRandomResponse)
+	err := c.cc.Invoke(ctx, OnionRoutingServer_GetRandomNumbers_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// TestServiceServer is the server API for TestService service.
-// All implementations must embed UnimplementedTestServiceServer
+// OnionRoutingServerServer is the server API for OnionRoutingServer service.
+// All implementations must embed UnimplementedOnionRoutingServerServer
 // for forward compatibility.
-type TestServiceServer interface {
-	TestRPC(context.Context, *DummyRequest) (*DummyResponse, error)
-	Test1RPC(context.Context, *DummyRequest) (*DummyResponse, error)
-	Test2RPC(context.Context, *DummyRequest) (*DummyResponse, error)
-	mustEmbedUnimplementedTestServiceServer()
+type OnionRoutingServerServer interface {
+	GreetServer(context.Context, *GreetRequest) (*GreetResponse, error)
+	CalculateFibonacci(context.Context, *FibonacciRequest) (*FibonacciResponse, error)
+	GetRandomNumbers(context.Context, *GetRandomRequest) (*GetRandomResponse, error)
+	mustEmbedUnimplementedOnionRoutingServerServer()
 }
 
-// UnimplementedTestServiceServer must be embedded to have
+// UnimplementedOnionRoutingServerServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedTestServiceServer struct{}
+type UnimplementedOnionRoutingServerServer struct{}
 
-func (UnimplementedTestServiceServer) TestRPC(context.Context, *DummyRequest) (*DummyResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method TestRPC not implemented")
+func (UnimplementedOnionRoutingServerServer) GreetServer(context.Context, *GreetRequest) (*GreetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GreetServer not implemented")
 }
-func (UnimplementedTestServiceServer) Test1RPC(context.Context, *DummyRequest) (*DummyResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Test1RPC not implemented")
+func (UnimplementedOnionRoutingServerServer) CalculateFibonacci(context.Context, *FibonacciRequest) (*FibonacciResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CalculateFibonacci not implemented")
 }
-func (UnimplementedTestServiceServer) Test2RPC(context.Context, *DummyRequest) (*DummyResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Test2RPC not implemented")
+func (UnimplementedOnionRoutingServerServer) GetRandomNumbers(context.Context, *GetRandomRequest) (*GetRandomResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRandomNumbers not implemented")
 }
-func (UnimplementedTestServiceServer) mustEmbedUnimplementedTestServiceServer() {}
-func (UnimplementedTestServiceServer) testEmbeddedByValue()                     {}
+func (UnimplementedOnionRoutingServerServer) mustEmbedUnimplementedOnionRoutingServerServer() {}
+func (UnimplementedOnionRoutingServerServer) testEmbeddedByValue()                            {}
 
-// UnsafeTestServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TestServiceServer will
+// UnsafeOnionRoutingServerServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OnionRoutingServerServer will
 // result in compilation errors.
-type UnsafeTestServiceServer interface {
-	mustEmbedUnimplementedTestServiceServer()
+type UnsafeOnionRoutingServerServer interface {
+	mustEmbedUnimplementedOnionRoutingServerServer()
 }
 
-func RegisterTestServiceServer(s grpc.ServiceRegistrar, srv TestServiceServer) {
-	// If the following call pancis, it indicates UnimplementedTestServiceServer was
+func RegisterOnionRoutingServerServer(s grpc.ServiceRegistrar, srv OnionRoutingServerServer) {
+	// If the following call pancis, it indicates UnimplementedOnionRoutingServerServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&TestService_ServiceDesc, srv)
+	s.RegisterService(&OnionRoutingServer_ServiceDesc, srv)
 }
 
-func _TestService_TestRPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DummyRequest)
+func _OnionRoutingServer_GreetServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GreetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TestServiceServer).TestRPC(ctx, in)
+		return srv.(OnionRoutingServerServer).GreetServer(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: TestService_TestRPC_FullMethodName,
+		FullMethod: OnionRoutingServer_GreetServer_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TestServiceServer).TestRPC(ctx, req.(*DummyRequest))
+		return srv.(OnionRoutingServerServer).GreetServer(ctx, req.(*GreetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _TestService_Test1RPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DummyRequest)
+func _OnionRoutingServer_CalculateFibonacci_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FibonacciRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TestServiceServer).Test1RPC(ctx, in)
+		return srv.(OnionRoutingServerServer).CalculateFibonacci(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: TestService_Test1RPC_FullMethodName,
+		FullMethod: OnionRoutingServer_CalculateFibonacci_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TestServiceServer).Test1RPC(ctx, req.(*DummyRequest))
+		return srv.(OnionRoutingServerServer).CalculateFibonacci(ctx, req.(*FibonacciRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _TestService_Test2RPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DummyRequest)
+func _OnionRoutingServer_GetRandomNumbers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRandomRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TestServiceServer).Test2RPC(ctx, in)
+		return srv.(OnionRoutingServerServer).GetRandomNumbers(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: TestService_Test2RPC_FullMethodName,
+		FullMethod: OnionRoutingServer_GetRandomNumbers_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TestServiceServer).Test2RPC(ctx, req.(*DummyRequest))
+		return srv.(OnionRoutingServerServer).GetRandomNumbers(ctx, req.(*GetRandomRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// TestService_ServiceDesc is the grpc.ServiceDesc for TestService service.
+// OnionRoutingServer_ServiceDesc is the grpc.ServiceDesc for OnionRoutingServer service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var TestService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "onion_routing.TestService",
-	HandlerType: (*TestServiceServer)(nil),
+var OnionRoutingServer_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "onion_routing.OnionRoutingServer",
+	HandlerType: (*OnionRoutingServerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "TestRPC",
-			Handler:    _TestService_TestRPC_Handler,
+			MethodName: "GreetServer",
+			Handler:    _OnionRoutingServer_GreetServer_Handler,
 		},
 		{
-			MethodName: "Test1RPC",
-			Handler:    _TestService_Test1RPC_Handler,
+			MethodName: "CalculateFibonacci",
+			Handler:    _OnionRoutingServer_CalculateFibonacci_Handler,
 		},
 		{
-			MethodName: "Test2RPC",
-			Handler:    _TestService_Test2RPC_Handler,
+			MethodName: "GetRandomNumbers",
+			Handler:    _OnionRoutingServer_GetRandomNumbers_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -204,7 +204,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RelayNodeServerClient interface {
-	RelayNodeRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
+	RelayNodeRPC(ctx context.Context, in *RelayRequest, opts ...grpc.CallOption) (*RelayResponse, error)
 }
 
 type relayNodeServerClient struct {
@@ -215,9 +215,9 @@ func NewRelayNodeServerClient(cc grpc.ClientConnInterface) RelayNodeServerClient
 	return &relayNodeServerClient{cc}
 }
 
-func (c *relayNodeServerClient) RelayNodeRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+func (c *relayNodeServerClient) RelayNodeRPC(ctx context.Context, in *RelayRequest, opts ...grpc.CallOption) (*RelayResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DummyResponse)
+	out := new(RelayResponse)
 	err := c.cc.Invoke(ctx, RelayNodeServer_RelayNodeRPC_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func (c *relayNodeServerClient) RelayNodeRPC(ctx context.Context, in *DummyReque
 // All implementations must embed UnimplementedRelayNodeServerServer
 // for forward compatibility.
 type RelayNodeServerServer interface {
-	RelayNodeRPC(context.Context, *DummyRequest) (*DummyResponse, error)
+	RelayNodeRPC(context.Context, *RelayRequest) (*RelayResponse, error)
 	mustEmbedUnimplementedRelayNodeServerServer()
 }
 
@@ -240,7 +240,7 @@ type RelayNodeServerServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRelayNodeServerServer struct{}
 
-func (UnimplementedRelayNodeServerServer) RelayNodeRPC(context.Context, *DummyRequest) (*DummyResponse, error) {
+func (UnimplementedRelayNodeServerServer) RelayNodeRPC(context.Context, *RelayRequest) (*RelayResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RelayNodeRPC not implemented")
 }
 func (UnimplementedRelayNodeServerServer) mustEmbedUnimplementedRelayNodeServerServer() {}
@@ -265,7 +265,7 @@ func RegisterRelayNodeServerServer(s grpc.ServiceRegistrar, srv RelayNodeServerS
 }
 
 func _RelayNodeServer_RelayNodeRPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DummyRequest)
+	in := new(RelayRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func _RelayNodeServer_RelayNodeRPC_Handler(srv interface{}, ctx context.Context,
 		FullMethod: RelayNodeServer_RelayNodeRPC_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RelayNodeServerServer).RelayNodeRPC(ctx, req.(*DummyRequest))
+		return srv.(RelayNodeServerServer).RelayNodeRPC(ctx, req.(*RelayRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

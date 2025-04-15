@@ -29,8 +29,8 @@ type OnionCell struct {
 	CellType   byte     // 1 byte (0 = Padding, 1 = Create, 2 = Data, 3 = Destroy)
 	CircuitID  uint16   // 2 bytes (Circuit ID)
 	IsExitNode byte     // 1 byte
-	BackF      byte     // 1 byte (0 = DES)
-	ForwF      byte     // 1 byte (1 = RC4)
+	RequestType byte     // 1 byte (0-Greet, 1-Fibnocci, 2-nRandom Numbers)
+	BackEncryption byte     // 1 byte (1 = RC4)
 	Port       uint16   // 2 bytes
 	IP         [4]byte  // 4 bytes (IPv4)
 	Expiration uint32   // 4 bytes (UNIX timestamp)
@@ -40,8 +40,8 @@ type OnionCell struct {
 
 func (cell OnionCell) String() string {
 	return fmt.Sprintf(
-		"CellType: %d\nCircuitID: %d\nisExitNode: %d\nBackF: %d\nForwF: %d\nPort: %d\nIP: %d.%d.%d.%d\nExpiration: %d\nKeySeed: %x\nPayload: %s",
-		cell.CellType, cell.CircuitID, cell.IsExitNode, cell.BackF, cell.ForwF, cell.Port,
+		"CellType: %d\nCircuitID: %d\nisExitNode: %d\nRequestType: %d\nBackEncryption: %d\nPort: %d\nIP: %d.%d.%d.%d\nExpiration: %d\nKeySeed: %x\nPayload: %s",
+		cell.CellType, cell.CircuitID, cell.IsExitNode, cell.RequestType, cell.BackEncryption, cell.Port,
 		cell.IP[0], cell.IP[1], cell.IP[2], cell.IP[3], cell.Expiration, cell.KeySeed, string(cell.Payload),
 	)
 }
@@ -52,8 +52,8 @@ func BuildMessage(cell OnionCell) []byte {
 	data[0] = cell.CellType
 	binary.BigEndian.PutUint16(data[1:3], cell.CircuitID)
 	data[3] = cell.IsExitNode
-	data[4] = cell.BackF
-	data[5] = cell.ForwF
+	data[4] = cell.RequestType
+	data[5] = cell.BackEncryption
 	binary.BigEndian.PutUint16(data[6:8], cell.Port)
 	copy(data[8:12], cell.IP[:])
 	binary.BigEndian.PutUint32(data[12:16], cell.Expiration)
@@ -69,8 +69,8 @@ func RebuildMessage(data []byte) OnionCell {
 	cell.CellType = data[0]
 	cell.CircuitID = binary.BigEndian.Uint16(data[1:3])
 	cell.IsExitNode = data[3]
-	cell.BackF = data[4]
-	cell.ForwF = data[5]
+	cell.RequestType = data[4]
+	cell.BackEncryption = data[5]
 	cell.Port = binary.BigEndian.Uint16(data[6:8])
 	copy(cell.IP[:], data[8:12])
 	cell.Expiration = binary.BigEndian.Uint32(data[12:16])
@@ -179,8 +179,8 @@ func DecryptECC(encryptedData []byte, privateKey *ecies.PrivateKey) ([]byte, err
 	return ecies.Decrypt(privateKey, encryptedData)
 }
 
-func EncryptWithKey(ForwF byte, data []byte, key []byte) []byte {
-	switch ForwF {
+func EncryptWithKey(Encryption byte, data []byte, key []byte) []byte {
+	switch Encryption {
 	case 1: // RC4
 		return EncryptRC4(data, key)
 	case 2: // AES
@@ -202,36 +202,36 @@ func EncryptDataClient(data []byte, forward_keys [][]byte) []byte {
 func CreateCell(ip [4]byte, port uint16, payload []byte, circuitID uint16, keySeed [16]byte, isExitNode byte) OnionCell {
 
 	cell := OnionCell{
-		CellType:   byte(CREATE_CELL),          // Create cell
-		CircuitID:  1001,       // Example Circuit ID
-		IsExitNode: isExitNode,          // Version 1
-		BackF:      1,          // Backward cipher (e.g., DES)
-		ForwF:      2,          // Forward cipher (e.g., RC4)
-		Port:       port,       // Port number
-		IP:         ip,         // Destination IP
-		Expiration: 5, // Expiration time
-		KeySeed: keySeed, // Random key seed
-		Payload: payload,            // Payload
+		CellType:   byte(CREATE_CELL),         
+		CircuitID:  1001,       
+		IsExitNode: isExitNode,         
+		RequestType:     1,          
+		BackEncryption:  2,         
+		Port:       port,      
+		IP:         ip,      
+		Expiration: 5, 
+		KeySeed: keySeed,
+		Payload: payload,          
 	}
 	return cell
 }
 
-func DataCell(payload []byte, circuitID uint16, isExitNode byte) OnionCell {
+func DataCell(payload []byte, circuitID uint16, isExitNode byte, RequestType byte) OnionCell {
 	key_seed := make([]byte, 16)
 	rand.Read(key_seed)
 	var ip [4]byte = [4]byte{0, 0, 0, 0}
 
 	cell := OnionCell{
-		CellType:   byte(DATA_CELL),          // Create cell
-		CircuitID:  circuitID,       // Example Circuit ID
-		IsExitNode: isExitNode,          // Version 1
-		BackF:      1,          // Backward cipher (e.g., DES)
-		ForwF:      2,          // Forward cipher (e.g., RC4)
-		Port:       0,           // random
-		IP:         ip,          // random
-		Expiration: 5, // Expiration time
-		KeySeed: [16]byte(key_seed), // Random key seed
-		Payload: payload,            // Payload
+		CellType:   byte(DATA_CELL),        
+		CircuitID:  circuitID,      
+		IsExitNode: isExitNode,
+		RequestType:     RequestType,       
+		BackEncryption:   2,      
+		Port:       0,        
+		IP:         ip,   
+		Expiration: 5,
+		KeySeed: [16]byte(key_seed), 
+		Payload: payload,     
 	}
 	return cell
 }
@@ -244,15 +244,15 @@ func PaddingCell(i int) OnionCell {
 	var ip [4]byte = [4]byte{0, 0, 0, 0}
 
 	cell := OnionCell{
-		CellType:   byte(PADDING_CELL),          // Create cell
-		CircuitID:  uint16(i),       // Example Circuit ID
-		IsExitNode: 0,          // Version 1
-		BackF:      1,          // Backward cipher (e.g., DES)
-		ForwF:      2,          // Forward cipher (e.g., RC4)
-		Port:       0,           // random
-		IP:         ip,          // random
-		Expiration: 5, // Expiration time
-		KeySeed: [16]byte(key_seed), // Random key seed
+		CellType:   byte(PADDING_CELL),         
+		CircuitID:  uint16(i),      
+		IsExitNode: 0,          
+		RequestType:      1,         
+		BackEncryption:   2,        
+		Port:       0,         
+		IP:         ip,         
+		Expiration: 5, 
+		KeySeed: [16]byte(key_seed), 
 		Payload:    payload,
 	}
 	return cell
@@ -266,8 +266,8 @@ func main() {
 	// 	CellType:   1,                    // Create cell
 	// 	CircuitID:  1001,                 // Example Circuit ID
 	// 	Version:    1,                    // Version 1
-	// 	BackF:      1,                    // Backward cipher (e.g., DES)
-	// 	ForwF:      2,                    // Forward cipher (e.g., RC4)
+	// 	RequestType:      1,                    // Backward cipher (e.g., DES)
+	// 	Encryption:      2,                    // Forward cipher (e.g., RC4)
 	// 	Port:       9002,                 // Port number
 	// 	IP:         [4]byte{192, 168, 1, 1}, // Destination IP
 	// 	Expiration: 1700000000,           // Expiration time

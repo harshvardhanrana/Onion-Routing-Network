@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+
 	// "fmt"
 	"log"
 	"time"
@@ -14,13 +16,17 @@ import (
 	"crypto/rsa"
 
 	"google.golang.org/grpc"
+	// "google.golang.org/grpc/mem"
+	// "google.golang.org/protobuf/internal/encoding/messageset"
 )
+
+const MAX_ATTEMPTS = 5
 
 var (
 	clientLogger *utils.Logger
 	nodes        []RelayNode
 	keySeeds = [3][16]byte{}
-	connected = 0
+	// connected = 0
 )
 
 
@@ -59,7 +65,7 @@ func encryptDataMessage(message []byte, pubkey *rsa.PublicKey, keySeed [16]byte)
 	return encryptedMessage, nil
 }
 
-func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]byte, pubkey *rsa.PublicKey, payload []byte, isExitNode byte)([]byte, error){
+func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]byte, pubkey *rsa.PublicKey, payload []byte, isExitNode byte, reqType byte)([]byte, error){
 	server_port, server_ip := utils.GetPortAndIP(serverAddr)  // added server address
 	var err error
 	var encrypted []byte
@@ -70,7 +76,7 @@ func buildLayer(cellType int, serverAddr string, circuitID uint16, keySeed [16]b
 		message := encryption.BuildMessage(cell)
 		encrypted, err = encryptCreateMessage(message, pubkey)
 	case 2:
-		cell := encryption.DataCell(payload, circuitID, isExitNode)
+		cell := encryption.DataCell(payload, circuitID, isExitNode, reqType)
 		message := encryption.BuildMessage(cell)
 		encrypted, err = encryptDataMessage(message, pubkey, keySeed)
 	}
@@ -94,56 +100,58 @@ func DecryptResponse(respMessage []byte) (string){
 
 func startCreationRoute(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16)(error) {
 	// Innermost Layer (node 3)
+	keySeeds = [3][16]byte{}
+	for i := 0; i < 3; i++ {
+		rand.Read(keySeeds[i][:])
+	}
 
-	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte("Create Cell Test"), byte(1))
+	encryptedMessage, err := buildLayer(1, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(""), byte(1), 1)
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0))
+	encryptedMessage, err = buildLayer(1, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0), 1)
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0))
+	encryptedMessage, err = buildLayer(1, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0), 1)
 	if err != nil {
 		return err
 	}
 
-	req := &routingpb.DummyRequest{Message: encryptedMessage}
+	req := &routingpb.RelayRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
 	start := time.Now()
 	_, err = client.RelayNodeRPC(context.Background(), req)
 	duration := time.Since(start)
 	if err != nil {
-		log.Fatalf("Error: %v", err)
 		return err
 	}
 
-	clientLogger.PrintLog("Connected to TOR Server")
+	clientLogger.PrintLog("Connected using Onion-Routing")
 	log.Printf("Connected to TOR Server")
 	log.Printf("Request-Response time: %v", duration)
 	return nil
 }
 
-func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, message string) (error) {
-
-	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(message), byte(1))
+func sendRequest(client routingpb.RelayNodeServerClient, chosen_nodes []RelayNode, circuitID uint16, message string, reqType int) (error) {
+	encryptedMessage, err := buildLayer(2, utils.ServerAddr, circuitID, keySeeds[2], chosen_nodes[2].PubKey, []byte(message), byte(1), byte(reqType))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0))
+	encryptedMessage, err = buildLayer(2, chosen_nodes[2].Address, circuitID, keySeeds[1], chosen_nodes[1].PubKey, encryptedMessage, byte(0), byte(reqType))
 	if err != nil {
 		return err
 	}
 
-	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0))
+	encryptedMessage, err = buildLayer(2, chosen_nodes[1].Address, circuitID, keySeeds[0], chosen_nodes[0].PubKey, encryptedMessage, byte(0), byte(reqType))
 	if err != nil {
 		return err
 	}
-	req := &routingpb.DummyRequest{Message: encryptedMessage}
+	req := &routingpb.RelayRequest{Message: encryptedMessage}
 
 	clientLogger.PrintLog("Request sending to server: %v", req)
 	start := time.Now()
@@ -174,6 +182,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Etcd Server is unreachable: %v", err)
 	}
+	clientLogger = utils.NewLogger("logs/client")
 
 	nodes, err = getAvailableRelayNodes(etcdClient)
 	if err != nil {
@@ -182,11 +191,9 @@ func main() {
 	if len(nodes) < 3 {
 		log.Fatalf("Insufficient Relay Nodes available");
 	}
-	chosen_nodes := GetNodesInRoute(nodes)
+	choosen_nodes := GetNodesInRoute(nodes)
 
-	clientLogger = utils.NewLogger("logs/client")
-	// Use grpc.Dial to create a connection.
-	conn, err := grpc.NewClient(chosen_nodes[0].Address, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(choosen_nodes[0].Address, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		log.Fatalf("Error while connecting to server: %v\n", err)
 	}
@@ -194,15 +201,48 @@ func main() {
 
 	client := routingpb.NewRelayNodeServerClient(conn)
 
-	for i := 0; i < 3; i++ {
-		rand.Read(keySeeds[i][:])
+	circuitID := 1000
+	err = startCreationRoute(client, choosen_nodes, uint16(circuitID))
+	if err != nil {
+		log.Fatalf("Failed to Create Route: %v", err)
 	}
 
-	circuitID := 1001
-	message := "This is Test Data Message"
-	startCreationRoute(client, chosen_nodes, uint16(circuitID))
-	sendRequest(client, chosen_nodes, uint16(circuitID), message)
+	for {
+		var reqType int 
+		fmt.Printf("Enter Request Type: ")
+		fmt.Scan(&reqType)
+		if reqType > 3 || reqType < 1 {
+			log.Printf("Invalid request type, Enter 1,2 or 3")
+			continue;
+		}
+		var message string
+		switch reqType {
+		case 1:
+			message = "Hi, This is Client" // greet message
+		case 2:
+			message = "10"  // nth fibonacci
+		case 3:
+			message = "5"  // n random numbers generator
+		}
+		
+		for i := 0 ; i < MAX_ATTEMPTS ; i++{
+			log.Printf("Attempt-[%d]:Sending Request with reqType-%d, message : %s\n", (i + 1), reqType, message)
+			err = sendRequest(client, choosen_nodes, uint16(circuitID), message, reqType)
+			if err == nil {
+				break
+			} else if utils.IsEqual(err, utils.ErrCircuitNotFound) {
+				circuitID += 1
+				log.Printf("Previous Route Not Exist, Creating New Route...\n")
+				err = startCreationRoute(client, choosen_nodes, uint16(circuitID))
+				if err != nil {
+					log.Fatalf("Failed to Create Route: %v", err)
+				}
+			} else {
+				log.Fatalf("Failed to Send Request; %v", err)
+			}
+		}
+	}
 	// for _ = range 10 {
-	// 	sendRequest(client, chosen_nodes, uint16(circuitID), message)
+	// 	sendRequest(client, choosen_nodes, uint16(circuitID), message)
 	// }
 }

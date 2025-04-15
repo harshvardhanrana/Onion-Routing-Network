@@ -56,8 +56,8 @@ type RelayNode struct {
 // }
 
 type CircuitInfo struct {
-	BackF byte
-	ForwF byte
+	RequestType byte
+	BackEncryption byte
 	ForwardIP [4]byte
 	ForwardPort uint16
 	BackwardIP [4]byte
@@ -107,8 +107,8 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 	key1, key2, key3 := encryption.DeriveKeys(cell.KeySeed[:])
 
 	cinfo := CircuitInfo{
-		BackF: cell.BackF,
-		ForwF: cell.ForwF,
+		RequestType: cell.RequestType,
+		BackEncryption: cell.BackEncryption,
 		Expiration: cell.Expiration,
 		ExpTime: time.Now().Add(time.Duration(cell.Expiration) * time.Second),
 		KeySeed: cell.KeySeed,
@@ -130,8 +130,7 @@ func handleCreateCell(cell encryption.OnionCell, ctx context.Context)(CircuitInf
 // 	return 
 // }
 
-func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInfo, []byte, error){
-	// decryptedMessage, err := encryption.DecryptRSA(req.Message, privateKey)
+func handleRequest(ctx context.Context, req *routingpb.RelayRequest) (CircuitInfo, []byte, error){
 	encryptedMessageHeader := req.Message[:256]
 	encryptedMessagePayload := req.Message[256:]
 	decryptedMessageHeader, err := encryption.DecryptRSA(encryptedMessageHeader, privateKey)
@@ -145,25 +144,29 @@ func handleRequest(ctx context.Context, req *routingpb.DummyRequest) (CircuitInf
 	// log.Println("Size of decrypted message: ", len(decryptedMessageHeader))
 	switch rebuiltCell.CellType {
 	case byte(encryption.CREATE_CELL): // create cell
+
 		log.Println("Create cell")
 		circuitInfoMapLock.Lock()
+		defer circuitInfoMapLock.Unlock()
 		circuitInfo := handleCreateCell(rebuiltCell, ctx)
 		atomic.AddInt32(&load, 1)
 		circuitInfoMap[rebuiltCell.CircuitID] = &circuitInfo
-		circuitInfoMapLock.Unlock()
-
+		log.Println("Create Cell Done-Debug Message")
 		return circuitInfo, encryptedMessagePayload, nil
+
 	case byte(encryption.DATA_CELL):
 		log.Println("Data cell")
 		circuitInfoMapLock.Lock()
+		defer circuitInfoMapLock.Unlock()
 		cinfo, exists := circuitInfoMap[rebuiltCell.CircuitID]
 		if !exists {
 			return CircuitInfo{}, make([]byte, 0), utils.ErrCircuitNotFound
 		}
 		cinfo.ExpTime = time.Now().Add(time.Duration(cinfo.Expiration) * time.Second)
+		cinfo.RequestType = rebuiltCell.RequestType
 		decryptedMessagePayload := encryption.DecryptRC4(encryptedMessagePayload, cinfo.key1[:])
-		circuitInfoMapLock.Unlock()
 		return *cinfo, decryptedMessagePayload, nil
+
 	case byte(encryption.PADDING_CELL):
 		log.Println("Padding cell")
 	}
@@ -175,30 +178,58 @@ func handleResponse(circuitInfo CircuitInfo, respMessage []byte) ([]byte){
 	return encryptedRespMessage
 }
 
-func sendRequestToServer(serverAddr string, req *routingpb.DummyRequest)(*routingpb.DummyResponse, error){
+func sendRequestToServer(serverAddr string, req *routingpb.RelayRequest, reqType int)(*routingpb.RelayResponse, error){
+	log.Printf("Received Request Type : %d\n", reqType)
 	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
 		log.Println("Received Error:", err)
-		return &routingpb.DummyResponse{}, err
+		return &routingpb.RelayResponse{}, err
 	}
 	defer conn.Close()
-	client := routingpb.NewTestServiceClient(conn)
-
-	relayLogger.PrintLog("Request sending to next Node: %v", req)
-	resp, err := client.TestRPC(context.Background(), req)
-	if err != nil {
-		log.Println("Received Error:", err, "from IP", req)
-		return &routingpb.DummyResponse{}, err
+	client := routingpb.NewOnionRoutingServerClient(conn)
+	var resp *routingpb.RelayResponse
+	switch reqType {
+	case 1:
+		reqToServer := &routingpb.GreetRequest{Message: req.Message}
+		relayLogger.PrintLog("Request sending to server: %v", req)
+		respFromServer, err := client.GreetServer(context.Background(), reqToServer)
+		if err != nil {
+			// log.Println("Received Error:", err, "from IP", req)
+			return &routingpb.RelayResponse{}, err
+		}
+		relayLogger.PrintLog("Response received from server: %v", respFromServer)
+		resp = &routingpb.RelayResponse{Reply: respFromServer.Reply}
+		
+	case 2:
+		reqToServer := &routingpb.FibonacciRequest{N : req.Message}
+		relayLogger.PrintLog("Request sending to server: %v", req)
+		respFromServer, err := client.CalculateFibonacci(context.Background(), reqToServer)
+		if err != nil {
+			// log.Println("Received Error:", err, "from IP", req)
+			return &routingpb.RelayResponse{}, err
+		}
+		relayLogger.PrintLog("Response received from server: %v", respFromServer)
+		resp = &routingpb.RelayResponse{Reply: respFromServer.Reply}
+		
+	case 3:
+		reqToServer := &routingpb.GetRandomRequest{N : req.Message}
+		relayLogger.PrintLog("Request sending to server: %v", req)
+		respFromServer, err := client.GetRandomNumbers(context.Background(), reqToServer)
+		if err != nil {
+			// log.Println("Received Error:", err, "from IP", req)
+			return &routingpb.RelayResponse{}, err
+		}
+		relayLogger.PrintLog("Response received from server: %v", respFromServer)
+		resp = &routingpb.RelayResponse{Reply: respFromServer.Reply}
 	}
-	relayLogger.PrintLog("Response received from next Node: %v", resp)
 	return resp, nil
 }
 
-func sendRequestToRelayNode(nodeAddr string, req *routingpb.DummyRequest)(*routingpb.DummyResponse, error){
+func sendRequestToRelayNode(nodeAddr string, req *routingpb.RelayRequest)(*routingpb.RelayResponse, error){
 	conn, err := grpc.NewClient(nodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
 	if err != nil {
 		log.Println("Received Error:", err)
-		return &routingpb.DummyResponse{}, err
+		return &routingpb.RelayResponse{}, err
 	}
 	defer conn.Close()
 	client := routingpb.NewRelayNodeServerClient(conn)
@@ -207,79 +238,42 @@ func sendRequestToRelayNode(nodeAddr string, req *routingpb.DummyRequest)(*routi
 	resp, err := client.RelayNodeRPC(context.Background(), req)
 	if err != nil {
 		log.Println("Received Error:", err)
-		return &routingpb.DummyResponse{}, err
+		return &routingpb.RelayResponse{}, err
 	}
 	relayLogger.PrintLog("Response received from next Node: %v", resp)
 	return resp, nil
 }
 
-func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.DummyRequest) (*routingpb.DummyResponse, error) {
+func (s *RelayNodeServer) RelayNodeRPC(ctx context.Context, req *routingpb.RelayRequest) (*routingpb.RelayResponse, error) {
 	relayLogger.PrintLog("Request recieved from previous Node: %v", req)
 
 	circuitInfo, forwardMessage, err := handleRequest(ctx, req)
 	if err != nil {
-		return &routingpb.DummyResponse{}, err
+		return &routingpb.RelayResponse{}, err
 	}
 	nextNodeAddr := fmt.Sprintf("localhost:%d",circuitInfo.ForwardPort)
 	
 	if len(forwardMessage) == 0 {  // handling padding cell + exitNode node in route-creation
-		return &routingpb.DummyResponse{Reply: []byte("Exit Node Reached")}, nil
+		return &routingpb.RelayResponse{Reply: []byte("Exit Node Reached or Padding Cell")}, nil
 	}
 	log.Println("Sending to Node with Addr: ", nextNodeAddr)
  
-	forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
+	forwardReq := &routingpb.RelayRequest{Message: forwardMessage}
 	if circuitInfo.IsExitNode {
-
-		// conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
-		// if err != nil {
-		// 	log.Println("Received Error:", err)
-		// 	return &routingpb.DummyResponse{}, err
-		// }
-		// defer conn.Close()
-		// client := routingpb.NewTestServiceClient(conn)
-
-		// relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
-		// resp, err := client.TestRPC(context.Background(), forwardReq)
-		// if err != nil {
-		// 	log.Println("Received Error:", err, "from IP", nextNodeAddr)
-		// 	return &routingpb.DummyResponse{}, err
-		// }
-		// relayLogger.PrintLog("Response received from next Node: %v", resp)
-		// return resp, nil
-
-		resp, err := sendRequestToServer(nextNodeAddr, forwardReq)
+		resp, err := sendRequestToServer(nextNodeAddr, forwardReq, int(circuitInfo.RequestType))
 		if err != nil {
-			return &routingpb.DummyResponse{}, err
+			return &routingpb.RelayResponse{}, err
 		}
 		respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
-		backwardResp := &routingpb.DummyResponse{Reply: respMessage}
+		backwardResp := &routingpb.RelayResponse{Reply: respMessage}
 		return backwardResp, nil
 	}
-
-	// conn, err := grpc.NewClient(nextNodeAddr, grpc.WithTransportCredentials(relayCredsAsClient))
-	// if err != nil {
-	// 	log.Println("Received Error:", err)
-	// 	return &routingpb.DummyResponse{}, err
-	// }
-	// defer conn.Close()
-	// client := routingpb.NewRelayNodeServerClient(conn)
-
-	// forwardReq := &routingpb.DummyRequest{Message: forwardMessage}
-	// relayLogger.PrintLog("Request sending to next Node: %v", forwardReq)
-	// resp, err := client.RelayNodeRPC(context.Background(), forwardReq)
-	// if err != nil {
-	// 	log.Println("Received Error:", err)
-	// 	return &routingpb.DummyResponse{}, err
-	// }
-	// relayLogger.PrintLog("Response received from next Node: %v", resp)
-	// return resp, nil
-
 	resp, err := sendRequestToRelayNode(nextNodeAddr, forwardReq)
 	if err != nil {
-		return &routingpb.DummyResponse{}, err
+		return &routingpb.RelayResponse{}, err
 	}
 	respMessage := handleResponse(circuitInfo, []byte(resp.Reply))
-	backwardResp := &routingpb.DummyResponse{Reply: respMessage}
+	backwardResp := &routingpb.RelayResponse{Reply: respMessage}
 	return backwardResp, nil
 }
 
@@ -336,7 +330,7 @@ func paddingLoopRandom(etcdClient *clientv3.Client, selfAddr string) {
 
 		fmt.Println("Size of encrypted message: ", len(encryptedMessage))
 
-		resp, err := client.RelayNodeRPC(context.Background(), &routingpb.DummyRequest{Message: encryptedMessage})
+		resp, err := client.RelayNodeRPC(context.Background(), &routingpb.RelayRequest{Message: encryptedMessage})
 		if err != nil {
 			log.Printf("Padding failed to %s: %v", target.Address, err)
 		} 
@@ -359,26 +353,9 @@ func main(){
 			log.Fatalf("Invalid command line argument; expecting integer value")
 		}
 		nodeID = fmt.Sprintf("node%d",id)
-		// pubKey = fmt.Sprintf("node%d_pub_key",id)
 	}
 
-	// RSA
-	// privateKey, pubKey = genKeyPairs()
-
-	//ECC
-
 	privateKey, pubKey = genKeyPairs()
-
-	// privateKeyBytes := encodePrivateKeyToPEM(privateKey)
-	// pubKeyBytes := encodePublicKeyToPEM(pubKey) 
-
-	// relayCredsAsClient = utils.LoadCredentialsAsClient("certificates/ca.crt", 
-	// 											  "certificates/relay_node.crt",
-	// 											  "certificates/relay_node.key")
-
-	// relayCredsAsServer = utils.LoadCredentialsAsServer("certificates/ca.crt", 
-	// 											  "certificates/relay_node.crt",
-	// 											  "certificates/relay_node.key")
 
 	relayCredsAsClient = credentials.NewTLS(utils.LoadClientTLSConfigWithKeyLog(
 		"certificates/ca.crt", 
@@ -392,8 +369,6 @@ func main(){
 		"certificates/relay_node.key",
 	))
 	
-
-
     var err error
 	relayLogger = utils.NewLogger("logs/relay")
 	relayAddr, err = utils.GetAvaliableAddress()
