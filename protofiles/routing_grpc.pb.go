@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TestService_TestRPC_FullMethodName = "/onion_routing.TestService/TestRPC"
+	TestService_TestRPC_FullMethodName  = "/onion_routing.TestService/TestRPC"
+	TestService_Test1RPC_FullMethodName = "/onion_routing.TestService/Test1RPC"
+	TestService_Test2RPC_FullMethodName = "/onion_routing.TestService/Test2RPC"
 )
 
 // TestServiceClient is the client API for TestService service.
@@ -27,6 +29,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TestServiceClient interface {
 	TestRPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
+	Test1RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
+	Test2RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
 }
 
 type testServiceClient struct {
@@ -47,11 +51,33 @@ func (c *testServiceClient) TestRPC(ctx context.Context, in *DummyRequest, opts 
 	return out, nil
 }
 
+func (c *testServiceClient) Test1RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DummyResponse)
+	err := c.cc.Invoke(ctx, TestService_Test1RPC_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *testServiceClient) Test2RPC(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DummyResponse)
+	err := c.cc.Invoke(ctx, TestService_Test2RPC_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TestServiceServer is the server API for TestService service.
 // All implementations must embed UnimplementedTestServiceServer
 // for forward compatibility.
 type TestServiceServer interface {
 	TestRPC(context.Context, *DummyRequest) (*DummyResponse, error)
+	Test1RPC(context.Context, *DummyRequest) (*DummyResponse, error)
+	Test2RPC(context.Context, *DummyRequest) (*DummyResponse, error)
 	mustEmbedUnimplementedTestServiceServer()
 }
 
@@ -64,6 +90,12 @@ type UnimplementedTestServiceServer struct{}
 
 func (UnimplementedTestServiceServer) TestRPC(context.Context, *DummyRequest) (*DummyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TestRPC not implemented")
+}
+func (UnimplementedTestServiceServer) Test1RPC(context.Context, *DummyRequest) (*DummyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Test1RPC not implemented")
+}
+func (UnimplementedTestServiceServer) Test2RPC(context.Context, *DummyRequest) (*DummyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Test2RPC not implemented")
 }
 func (UnimplementedTestServiceServer) mustEmbedUnimplementedTestServiceServer() {}
 func (UnimplementedTestServiceServer) testEmbeddedByValue()                     {}
@@ -104,6 +136,42 @@ func _TestService_TestRPC_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TestService_Test1RPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DummyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TestServiceServer).Test1RPC(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TestService_Test1RPC_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TestServiceServer).Test1RPC(ctx, req.(*DummyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TestService_Test2RPC_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DummyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TestServiceServer).Test2RPC(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TestService_Test2RPC_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TestServiceServer).Test2RPC(ctx, req.(*DummyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TestService_ServiceDesc is the grpc.ServiceDesc for TestService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +182,14 @@ var TestService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestRPC",
 			Handler:    _TestService_TestRPC_Handler,
+		},
+		{
+			MethodName: "Test1RPC",
+			Handler:    _TestService_Test1RPC_Handler,
+		},
+		{
+			MethodName: "Test2RPC",
+			Handler:    _TestService_Test2RPC_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

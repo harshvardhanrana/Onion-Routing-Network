@@ -6,6 +6,8 @@ option go_package = "DS-Project-Onion-Routing/protofiles";
 
 service TestService {
     rpc TestRPC (DummyRequest) returns (DummyResponse);
+    rpc Test1RPC (DummyRequest) returns (DummyResponse);
+    rpc Test2RPC (DummyRequest) returns (DummyResponse);
 }
 
 service RelayNodeServer {
