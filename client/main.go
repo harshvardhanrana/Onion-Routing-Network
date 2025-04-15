@@ -216,13 +216,13 @@ func main() {
 		var reqType int 
 		fmt.Printf("Enter Request Type: ")
 		fmt.Scan(&reqType)
+		if reqType > 3 || reqType < 0 {
+			log.Printf("Invalid request type, Enter 1,2 or 3")
+			continue;
+		}
 		if( reqType == 0) {
 			log.Printf("Exiting Client")
 			break;
-		}
-		if reqType > 3 || reqType < 1 {
-			log.Printf("Invalid request type, Enter 1,2 or 3")
-			continue;
 		}
 		var message string
 		switch reqType {
